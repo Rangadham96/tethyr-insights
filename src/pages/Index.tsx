@@ -1,11 +1,25 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { useState } from "react";
+import Ticker from "@/components/Ticker";
+import LeftPanel from "@/components/LeftPanel";
+import ReportPanel from "@/components/ReportPanel";
 
 const Index = () => {
+  const [isSearching, setIsSearching] = useState(false);
+
+  const handleRunReport = () => {
+    setIsSearching(true);
+    setTimeout(() => setIsSearching(false), 3000);
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
+    <div className="h-screen overflow-hidden relative z-[1]">
+      <Ticker />
+      <div
+        className="grid h-[calc(100vh-26px)] mt-[26px] relative z-[1]"
+        style={{ gridTemplateColumns: "380px 1fr" }}
+      >
+        <LeftPanel onRunReport={handleRunReport} isSearching={isSearching} />
+        <ReportPanel />
       </div>
     </div>
   );

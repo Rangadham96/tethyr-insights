@@ -13,7 +13,33 @@ export default {
       },
     },
     extend: {
+      fontFamily: {
+        display: ["'Playfair Display'", "serif"],
+        body: ["'Crimson Pro'", "Georgia", "serif"],
+        mono: ["'Geist Mono'", "monospace"],
+      },
       colors: {
+        paper: {
+          DEFAULT: "hsl(var(--paper))",
+          dark: "hsl(var(--paper-dark))",
+          darker: "hsl(var(--paper-darker))",
+        },
+        ink: {
+          DEFAULT: "hsl(var(--ink))",
+          2: "hsl(var(--ink-2))",
+          3: "hsl(var(--ink-3))",
+          4: "hsl(var(--ink-4))",
+          5: "hsl(var(--ink-5))",
+        },
+        red: {
+          DEFAULT: "hsl(var(--red))",
+          soft: "hsl(var(--red-soft))",
+        },
+        green: {
+          DEFAULT: "hsl(var(--green))",
+          soft: "hsl(var(--green-soft))",
+        },
+        amber: "hsl(var(--amber))",
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
@@ -60,30 +86,15 @@ export default {
       },
       borderRadius: {
         lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
-      },
-      keyframes: {
-        "accordion-down": {
-          from: {
-            height: "0",
-          },
-          to: {
-            height: "var(--radix-accordion-content-height)",
-          },
-        },
-        "accordion-up": {
-          from: {
-            height: "var(--radix-accordion-content-height)",
-          },
-          to: {
-            height: "0",
-          },
-        },
+        md: "calc(var(--radius) - 1px)",
+        sm: "calc(var(--radius) - 2px)",
       },
       animation: {
-        "accordion-down": "accordion-down 0.2s ease-out",
-        "accordion-up": "accordion-up 0.2s ease-out",
+        "ticker-scroll": "ticker-scroll 25s linear infinite",
+        "blink": "blink 1.4s ease-in-out infinite",
+        "badge-pulse": "badge-pulse 1.2s ease-in-out infinite",
+        "section-in": "section-in 0.5s ease forwards",
+        "report-in": "report-in 0.4s ease forwards",
       },
     },
   },
