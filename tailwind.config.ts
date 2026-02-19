@@ -89,12 +89,19 @@ export default {
         md: "calc(var(--radius) - 1px)",
         sm: "calc(var(--radius) - 2px)",
       },
+      keyframes: {
+        "scroll-bounce": {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(6px)" },
+        },
+      },
       animation: {
         "ticker-scroll": "ticker-scroll 25s linear infinite",
         "blink": "blink 1.4s ease-in-out infinite",
         "badge-pulse": "badge-pulse 1.2s ease-in-out infinite",
         "section-in": "section-in 0.5s ease forwards",
         "report-in": "report-in 0.4s ease forwards",
+        "scroll-bounce": "scroll-bounce 1.5s ease-in-out infinite",
       },
     },
   },
