@@ -35,30 +35,30 @@ const MOCK_CLASSIFICATION: ClassificationEvent = {
 };
 
 const MOCK_SOURCE_TIMELINE: Array<{ time: number; event: SourceUpdateEvent }> = [
-  { time: 1000, event: { platform: "reddit", status: "searching", items_found: 0, message: "Reddit: scanning subreddits" } },
-  { time: 2000, event: { platform: "reddit", status: "done", items_found: 34, message: "Reddit: 34 threads found" } },
-  { time: 2500, event: { platform: "apple_app_store", status: "searching", items_found: 0, message: "App Store: extracting reviews" } },
-  { time: 3500, event: { platform: "apple_app_store", status: "done", items_found: 847, message: "App Store: 847 reviews processed" } },
-  { time: 4000, event: { platform: "youtube_comments", status: "searching", items_found: 0, message: "YouTube: scanning comments" } },
-  { time: 5500, event: { platform: "youtube_comments", status: "done", items_found: 156, message: "YouTube: 156 comments extracted" } },
-  { time: 6000, event: { platform: "patient_communities", status: "searching", items_found: 0, message: "Patient Communities: searching forums" } },
-  { time: 7000, event: { platform: "patient_communities", status: "done", items_found: 89, message: "Patient Communities: 89 posts found" } },
-  { time: 7500, event: { platform: "academic_papers", status: "searching", items_found: 0, message: "PubMed: searching papers" } },
-  { time: 8500, event: { platform: "academic_papers", status: "done", items_found: 121, message: "PubMed: 121 abstracts matched" } },
+  { time: 1200, event: { platform: "reddit", status: "searching", items_found: 0, message: "Reddit: scanning subreddits" } },
+  { time: 2800, event: { platform: "reddit", status: "done", items_found: 34, message: "Reddit: 34 threads found" } },
+  { time: 3200, event: { platform: "apple_app_store", status: "searching", items_found: 0, message: "App Store: extracting reviews" } },
+  { time: 4800, event: { platform: "apple_app_store", status: "done", items_found: 847, message: "App Store: 847 reviews processed" } },
+  { time: 5400, event: { platform: "youtube_comments", status: "searching", items_found: 0, message: "YouTube: scanning comments" } },
+  { time: 7200, event: { platform: "youtube_comments", status: "done", items_found: 156, message: "YouTube: 156 comments extracted" } },
+  { time: 7800, event: { platform: "patient_communities", status: "searching", items_found: 0, message: "Patient Communities: searching forums" } },
+  { time: 9200, event: { platform: "patient_communities", status: "done", items_found: 89, message: "Patient Communities: 89 posts found" } },
+  { time: 9800, event: { platform: "academic_papers", status: "searching", items_found: 0, message: "PubMed: searching papers" } },
+  { time: 11200, event: { platform: "academic_papers", status: "done", items_found: 121, message: "PubMed: 121 abstracts matched" } },
 ];
 
 const MOCK_LOG_TIMELINE: Array<{ time: number; event: LogEvent }> = [
-  { time: 600, event: { text: "Classifying query and selecting optimal sources...", type: "searching" } },
-  { time: 1200, event: { text: "Scanning Reddit for health-related discussions...", type: "searching" } },
-  { time: 2100, event: { text: "Found 34 relevant threads across 6 subreddits", type: "found" } },
-  { time: 2700, event: { text: "Extracting App Store reviews for top health apps...", type: "searching" } },
-  { time: 3600, event: { text: "Processed 847 reviews — filtering for signal", type: "found" } },
-  { time: 4200, event: { text: "Scanning YouTube comments on health product reviews...", type: "searching" } },
-  { time: 5600, event: { text: "Extracted 156 comments with product feedback", type: "found" } },
-  { time: 6200, event: { text: "Searching patient community forums...", type: "searching" } },
-  { time: 7100, event: { text: "Found 89 first-person accounts on HealthUnlocked", type: "found" } },
-  { time: 7600, event: { text: "Querying PubMed for clinical validation...", type: "searching" } },
-  { time: 8600, event: { text: "Matched 121 abstracts — synthesizing report", type: "found" } },
+  { time: 800, event: { text: "Classifying query and selecting optimal sources...", type: "searching" } },
+  { time: 1500, event: { text: "Scanning Reddit for health-related discussions...", type: "searching" } },
+  { time: 2900, event: { text: "Found 34 relevant threads across 6 subreddits", type: "found" } },
+  { time: 3500, event: { text: "Extracting App Store reviews for top health apps...", type: "searching" } },
+  { time: 5000, event: { text: "Processed 847 reviews — filtering for signal", type: "found" } },
+  { time: 5700, event: { text: "Scanning YouTube comments on health product reviews...", type: "searching" } },
+  { time: 7400, event: { text: "Extracted 156 comments with product feedback", type: "found" } },
+  { time: 8100, event: { text: "Searching patient community forums...", type: "searching" } },
+  { time: 9400, event: { text: "Found 89 first-person accounts on HealthUnlocked", type: "found" } },
+  { time: 10000, event: { text: "Querying PubMed for clinical validation...", type: "searching" } },
+  { time: 11400, event: { text: "Matched 121 abstracts — synthesizing report", type: "found" } },
 ];
 
 const MOCK_REPORT: ReportData = {
@@ -147,9 +147,9 @@ function runMockSSE(query: string, callback: MockSSECallback): () => void {
     timers.push(setTimeout(() => callback("log", item.event), item.time));
   }
 
-  // Report complete at 9s
-  const report = { ...MOCK_REPORT, meta: { ...MOCK_REPORT.meta, query } };
-  timers.push(setTimeout(() => callback("report_complete", report), 9000));
+  // Report complete at 12s
+  const report = { ...MOCK_REPORT, meta: { ...MOCK_REPORT.meta, query, search_duration_seconds: 12 } };
+  timers.push(setTimeout(() => callback("report_complete", report), 12000));
 
   return () => timers.forEach(clearTimeout);
 }
