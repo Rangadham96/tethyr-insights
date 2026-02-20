@@ -1,6 +1,5 @@
 import type {
   UserTier,
-  SubmitReportResponse,
   ClassificationEvent,
   SourceUpdateEvent,
   LogEvent,
@@ -154,6 +153,105 @@ function runMockSSE(query: string, callback: MockSSECallback): () => void {
   return () => timers.forEach(clearTimeout);
 }
 
+// ── Live SSE stream reader ──
+
+export type SSECallback = (eventType: string, data: unknown) => void;
+
+export async function startLiveStream(
+  query: string,
+  intents: string[],
+  callback: SSECallback,
+  authToken?: string,
+): Promise<() => void> {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  const url = `${supabaseUrl}/functions/v1/generate-report`;
+
+  const controller = new AbortController();
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    apikey: supabaseKey,
+  };
+  if (authToken) {
+    headers["Authorization"] = `Bearer ${authToken}`;
+  }
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ query, intents }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMsg = `Server error: ${response.status}`;
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMsg = errorJson.error || errorMsg;
+      } catch { /* use default */ }
+      throw new Error(errorMsg);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error("No response body");
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    // Read stream in background
+    (async () => {
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+
+          // Process complete SSE events (separated by double newline)
+          let eventEnd: number;
+          while ((eventEnd = buffer.indexOf("\n\n")) !== -1) {
+            const eventBlock = buffer.slice(0, eventEnd);
+            buffer = buffer.slice(eventEnd + 2);
+
+            let eventType = "";
+            let eventData = "";
+
+            for (const line of eventBlock.split("\n")) {
+              if (line.startsWith("event: ")) {
+                eventType = line.slice(7).trim();
+              } else if (line.startsWith("data: ")) {
+                eventData += line.slice(6);
+              }
+            }
+
+            if (eventType && eventData) {
+              try {
+                const parsed = JSON.parse(eventData);
+                callback(eventType, parsed);
+              } catch {
+                // Skip malformed events
+              }
+            }
+          }
+        }
+      } catch (e) {
+        if (!(e instanceof DOMException && e.name === "AbortError")) {
+          callback("error", { message: e instanceof Error ? e.message : "Connection lost" });
+        }
+      }
+    })();
+  } catch (e) {
+    if (!(e instanceof DOMException && e.name === "AbortError")) {
+      throw e;
+    }
+  }
+
+  return () => controller.abort();
+}
+
 // ── Public API ──
 
 export async function submitReport(
@@ -162,19 +260,12 @@ export async function submitReport(
   tier: UserTier,
 ): Promise<{ reportId: string; mockCleanup?: () => void; query: string }> {
   if (USE_MOCK) {
-    // Return immediately — the hook will call startMockStream
     return { reportId: "TR-mock-001", query };
   }
 
-  const res = await fetch(`${API_BASE_URL}/api/report`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query, intents, sessionId: crypto.randomUUID(), tier }),
-  });
-
-  if (!res.ok) throw new Error(`Report submission failed: ${res.status}`);
-  const data: SubmitReportResponse = await res.json();
-  return { reportId: data.reportId, query };
+  // For live mode, we no longer need a separate submit step —
+  // the stream handles everything. Return a placeholder.
+  return { reportId: `TR-${crypto.randomUUID().slice(0, 8)}`, query };
 }
 
 export function startMockStream(query: string, callback: MockSSECallback): () => void {
