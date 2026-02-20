@@ -226,6 +226,14 @@ apple_app_store
     FITNESS, FINANCE mobile product
   ALWAYS include if query involves a product that has 
     a mobile app competitor
+  IMPORTANT SCRAPING APPROACH: Do NOT scrape apple.com 
+    directly — it blocks bots. Instead use this goal:
+    "Go to apps.apple.com, search for [competitor app name], 
+    navigate to ratings and reviews, extract the 20 most 
+    recent 1 and 2 star reviews including review text, 
+    date, and star rating."
+  The task transformer will route this through Google 
+    search to bypass blocks.
   Focus: 1-star and 2-star reviews only — these contain 
     feature requests and unmet needs
   Extract: review text, star rating, date, 
@@ -310,10 +318,17 @@ bbb_complaints
 youtube_comments
   USE WHEN: HEALTH_WELLNESS always, CREATOR_TOOLS, 
     EDUCATION, CONSUMERS_GENERAL, B2C_APP
-  Search: "[competitor name] review", 
-    "[problem] solution", "[topic] does it work"
-  Extract comments on: reviews, tutorials, 
-    "after 6 months" videos, "honest review" videos
+  IMPORTANT SCRAPING APPROACH: Do NOT use youtube.com 
+    directly — it blocks bots aggressively. Instead 
+    set url_or_query to "https://www.google.com" and 
+    use this goal pattern:
+    "Go to google.com and search for '[topic] review 
+    site:youtube.com', click the first 3 results, 
+    on each YouTube page scroll to the comments section 
+    and extract the top 20 comments sorted by 
+    Top Comments."
+  This indirect approach via Google bypasses YouTube 
+    bot detection.
   SKIP WHEN: DEVELOPER_TOOLS, B2B_SAAS — 
     low signal on YouTube
 
@@ -332,14 +347,19 @@ twitter_x
 
 
 facebook_groups_public
-  USE WHEN: HEALTH_WELLNESS always, SMALL_BUSINESS, 
-    CONSUMERS_GENERAL, EDUCATION, parenting products
-  Facebook Groups contain the most candid long-form 
-    discussion on the internet for non-technical audiences
-  Search: "[topic] group" — find large public groups, 
-    search within them for complaints and questions
-  SKIP WHEN: DEVELOPER_TOOLS, B2B_SAAS — 
-    these audiences do not use Facebook Groups
+  *** BLOCKED — DO NOT SELECT ***
+  Facebook requires login and blocks all scraping. 
+  Never select facebook_groups_public as a source. 
+  Instead substitute these alternatives automatically:
+  - HEALTH_WELLNESS → use patient_communities 
+    (HealthUnlocked.com, PatientsLikeMe.com) — public, 
+    unblocked, more honest health discussions
+  - SMALL_BUSINESS, CONSUMERS_GENERAL → use Reddit 
+    small business communities and Quora instead
+  Always list facebook_groups_public in routing_skipped 
+    with reason "Platform requires login and blocks 
+    scraping; substituted with [alternative] for 
+    equivalent audience signal."
 
 
 
@@ -356,13 +376,16 @@ linkedin_comments
 
 
 tiktok_comments
-  USE WHEN: CONSUMERS_GENERAL, HEALTH_WELLNESS, 
-    CREATOR_TOOLS, EDUCATION, any product targeting 
-    under-35 consumers
-  Search: "[product name] review", "[problem] solution" 
-    — comments contain extremely candid reactions
-  SKIP WHEN: B2B_SAAS, DEVELOPER_TOOLS, 
-    ENTERPRISE_BUYERS
+  *** BLOCKED — DO NOT SELECT ***
+  TikTok blocks virtually all scraping. Never select 
+    tiktok_comments as a source. When the query would 
+    have qualified for TikTok (CONSUMERS_GENERAL, 
+    HEALTH_WELLNESS, CREATOR_TOOLS targeting under-35), 
+    use Reddit mobile communities and Quora instead — 
+    same demographic, not blocked. Always list 
+    tiktok_comments in routing_skipped with reason 
+    "Platform blocks automated access; substituted 
+    with Reddit and Quora for equivalent audience signal."
 
 
 
@@ -832,13 +855,74 @@ interface TinyFishResult {
 // TIERED TIMEOUTS PER PLATFORM
 // ═══════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════
+// POST-CLASSIFICATION TASK TRANSFORMER
+// Fixes platform-specific scraping approaches for
+// platforms that block direct access
+// ═══════════════════════════════════════════════
+
+function transformTasks(tasks: TinyFishTask[], classification: any): TinyFishTask[] {
+  const transformed: TinyFishTask[] = [];
+
+  for (const task of tasks) {
+    // APPLE APP STORE: Route through Google search instead of apple.com
+    if (task.platform === "apple_app_store") {
+      // Extract app/topic from the goal to build a Google search
+      const searchTopic = task.url_or_query.includes("apple.com")
+        ? task.goal.match(/search for ['"]?([^'"]+)['"]?/i)?.[1] || task.url_or_query
+        : task.url_or_query;
+      transformed.push({
+        ...task,
+        url_or_query: "https://www.google.com",
+        goal: `Go to google.com and search for '${searchTopic} app store reviews site:apps.apple.com'. Click the first result. On the App Store page, navigate to Ratings & Reviews. Extract the 20 most recent 1-star and 2-star reviews including the full review text, date, and star rating. If the App Store page doesn't load reviews, go back to Google and search for '${searchTopic} app reviews site:appfollow.io' and extract reviews from there instead.`,
+      });
+      continue;
+    }
+
+    // YOUTUBE COMMENTS: Route through Google search instead of youtube.com
+    if (task.platform === "youtube_comments") {
+      const searchTopic = task.url_or_query.includes("youtube.com")
+        ? task.goal.match(/search for ['"]?([^'"]+)['"]?/i)?.[1] || task.url_or_query
+        : task.url_or_query;
+      transformed.push({
+        ...task,
+        url_or_query: "https://www.google.com",
+        goal: `Go to google.com and search for '${searchTopic} review site:youtube.com'. Click the first 3 video results. On each YouTube page, scroll down to the comments section, sort by Top Comments, and extract the top 20 comments including the comment text, author name, like count, and relative date. Return all comments grouped by video title.`,
+      });
+      continue;
+    }
+
+    // TIKTOK: Should have been excluded by prompt, but catch any that slip through
+    if (task.platform === "tiktok_comments") {
+      // Skip entirely — prompt should have excluded this
+      console.warn("TikTok task slipped through classification, dropping it");
+      continue;
+    }
+
+    // FACEBOOK GROUPS: Should have been excluded by prompt, but catch any that slip through
+    if (task.platform === "facebook_groups_public") {
+      console.warn("Facebook Groups task slipped through classification, dropping it");
+      continue;
+    }
+
+    transformed.push(task);
+  }
+
+  return transformed;
+}
+
+// ═══════════════════════════════════════════════
+// TIERED TIMEOUTS PER PLATFORM
+// ═══════════════════════════════════════════════
+
 const PLATFORM_TIMEOUTS: Record<string, number> = {
   // Slow tier — 600s (10 min)
   reddit: 600_000,
-  facebook_groups_public: 600_000,
-  youtube_comments: 600_000,
   patient_communities: 600_000,
   discourse_forums: 600_000,
+  // Medium-slow — 480s (8 min) for Google-routed platforms
+  apple_app_store: 480_000,
+  youtube_comments: 480_000,
   // Fast tier — 180s (3 min)
   twitter_x: 180_000,
   producthunt: 180_000,
@@ -847,7 +931,6 @@ const PLATFORM_TIMEOUTS: Record<string, number> = {
   trustpilot: 180_000,
   bbb_complaints: 180_000,
   indie_review_sites: 180_000,
-  tiktok_comments: 180_000,
   indiehackers: 180_000,
   discord_public: 180_000,
   job_postings: 180_000,
@@ -1107,7 +1190,13 @@ serve(async (req: Request) => {
         ) as any;
 
         const classification = classificationResult.classification;
-        const tasks: TinyFishTask[] = classificationResult.tasks || [];
+        const rawTasks: TinyFishTask[] = classificationResult.tasks || [];
+
+        // Apply platform-specific fixes for blocked sources
+        const tasks = transformTasks(rawTasks, classification);
+        if (tasks.length < rawTasks.length) {
+          send(logEvent(`Dropped ${rawTasks.length - tasks.length} blocked platform(s) from task list`, "info"));
+        }
 
         // Map to frontend event shape
         const sourcesSelected = tasks.map((t: any) => ({
