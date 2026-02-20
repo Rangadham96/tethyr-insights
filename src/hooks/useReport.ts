@@ -7,9 +7,9 @@ import type {
   ReportData,
   ClassificationEvent,
 } from "@/types/report";
-import { submitReport, startMockStream, createReportStream } from "@/services/api";
-import { parseSSEEvent } from "@/services/sse";
+import { submitReport, startMockStream, startLiveStream } from "@/services/api";
 import { SOURCE_REGISTRY } from "@/constants/sources";
+import { supabase } from "@/integrations/supabase/client";
 
 const USE_MOCK = !import.meta.env.VITE_API_URL;
 
@@ -67,6 +67,12 @@ export function useReport() {
         setAppState("complete");
         break;
       }
+      case "error": {
+        const err = data as { message: string };
+        setAppState("error");
+        setErrorMessage(err.message || "Something went wrong.");
+        break;
+      }
     }
   }, []);
 
@@ -82,36 +88,17 @@ export function useReport() {
       setErrorMessage("");
 
       try {
-        const result = await submitReport(query, intents, userTier);
-
         if (USE_MOCK) {
+          const result = await submitReport(query, intents, userTier);
           const cleanup = startMockStream(result.query, handleEvent);
           cleanupRef.current = cleanup;
         } else {
-          const es = createReportStream(result.reportId);
-          es.addEventListener("classification_complete", (e) => {
-            const parsed = parseSSEEvent("classification_complete", (e as MessageEvent).data);
-            if (parsed) handleEvent(parsed.type, parsed.data);
-          });
-          es.addEventListener("source_update", (e) => {
-            const parsed = parseSSEEvent("source_update", (e as MessageEvent).data);
-            if (parsed) handleEvent(parsed.type, parsed.data);
-          });
-          es.addEventListener("log", (e) => {
-            const parsed = parseSSEEvent("log", (e as MessageEvent).data);
-            if (parsed) handleEvent(parsed.type, parsed.data);
-          });
-          es.addEventListener("report_complete", (e) => {
-            const parsed = parseSSEEvent("report_complete", (e as MessageEvent).data);
-            if (parsed) handleEvent(parsed.type, parsed.data);
-            es.close();
-          });
-          es.onerror = () => {
-            setAppState("error");
-            setErrorMessage("Connection lost. Please try again.");
-            es.close();
-          };
-          cleanupRef.current = () => es.close();
+          // Get auth token for authenticated requests
+          const { data: { session } } = await supabase.auth.getSession();
+          const authToken = session?.access_token;
+
+          const cleanup = await startLiveStream(query, intents, handleEvent, authToken);
+          cleanupRef.current = cleanup;
         }
       } catch (err) {
         setAppState("error");
