@@ -8,8 +8,6 @@ import type {
 
 export const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 
-const USE_MOCK = !import.meta.env.VITE_API_URL;
-
 // ── Mock data ──
 
 const MOCK_CLASSIFICATION: ClassificationEvent = {
@@ -257,21 +255,7 @@ export async function startLiveStream(
 export async function submitReport(
   query: string,
   intents: string[],
-  tier: UserTier,
-): Promise<{ reportId: string; mockCleanup?: () => void; query: string }> {
-  if (USE_MOCK) {
-    return { reportId: "TR-mock-001", query };
-  }
-
-  // For live mode, we no longer need a separate submit step —
-  // the stream handles everything. Return a placeholder.
+  _tier: UserTier,
+): Promise<{ reportId: string; query: string }> {
   return { reportId: `TR-${crypto.randomUUID().slice(0, 8)}`, query };
-}
-
-export function startMockStream(query: string, callback: MockSSECallback): () => void {
-  return runMockSSE(query, callback);
-}
-
-export function createReportStream(reportId: string): EventSource {
-  return new EventSource(`${API_BASE_URL}/api/report/${reportId}/stream`);
 }

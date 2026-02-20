@@ -7,11 +7,9 @@ import type {
   ReportData,
   ClassificationEvent,
 } from "@/types/report";
-import { submitReport, startMockStream, startLiveStream } from "@/services/api";
+import { startLiveStream } from "@/services/api";
 import { SOURCE_REGISTRY } from "@/constants/sources";
 import { supabase } from "@/integrations/supabase/client";
-
-const USE_MOCK = !import.meta.env.VITE_API_URL;
 
 export function useReport() {
   const [appState, setAppState] = useState<AppState>("landing");
@@ -88,18 +86,12 @@ export function useReport() {
       setErrorMessage("");
 
       try {
-        if (USE_MOCK) {
-          const result = await submitReport(query, intents, userTier);
-          const cleanup = startMockStream(result.query, handleEvent);
-          cleanupRef.current = cleanup;
-        } else {
-          // Get auth token for authenticated requests
-          const { data: { session } } = await supabase.auth.getSession();
-          const authToken = session?.access_token;
+        // Get auth token for authenticated requests
+        const { data: { session } } = await supabase.auth.getSession();
+        const authToken = session?.access_token;
 
-          const cleanup = await startLiveStream(query, intents, handleEvent, authToken);
-          cleanupRef.current = cleanup;
-        }
+        const cleanup = await startLiveStream(query, intents, handleEvent, authToken);
+        cleanupRef.current = cleanup;
       } catch (err) {
         setAppState("error");
         setErrorMessage(err instanceof Error ? err.message : "Something went wrong.");
