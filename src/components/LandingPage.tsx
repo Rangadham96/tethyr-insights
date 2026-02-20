@@ -197,17 +197,17 @@ const LandingPage = ({ onRunReport, isSearching, appState }: LandingPageProps) =
           </div>
         </div>
 
-        {/* Spacer — larger portion of gap above hint */}
-        <div className="flex-[3]" />
+        {/* Equal spacer above hint */}
+        <div className="flex-1" />
 
-        {/* Scroll hint */}
+        {/* Scroll hint — centered in remaining gap */}
         <div className="flex flex-col items-center gap-1.5 opacity-50 animate-scroll-bounce">
           <span className="font-mono text-[8px] tracking-[0.14em] uppercase text-ink-4">Scroll to learn more</span>
           <div className="w-px h-4 md:h-6 bg-ink-4" />
         </div>
 
-        {/* Smaller bottom spacer */}
-        <div className="flex-[2]" />
+        {/* Equal spacer below hint */}
+        <div className="flex-1" />
       </section>
 
       {/* Section 2: The Problem */}
