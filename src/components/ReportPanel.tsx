@@ -1,6 +1,7 @@
 import CopyButton from "@/components/CopyButton";
 import TierGate from "@/components/TierGate";
 import { SOURCE_REGISTRY } from "@/constants/sources";
+import { exportReportPdf } from "@/lib/exportPdf";
 import type { ReportData, UserTier, Verdict } from "@/types/report";
 
 interface ReportPanelProps {
@@ -64,9 +65,12 @@ const ReportPanel = ({ reportData, userTier }: ReportPanelProps) => {
             <span className={`font-mono text-[8.5px] font-medium tracking-[0.06em] ${vc.textColor}`}>
               {vc.icon} {meta.verdict}
             </span>
-            <span className="font-mono text-[8.5px] tracking-[0.1em] uppercase text-ink-3 cursor-pointer border-b border-ink/[0.22] pb-[1px] transition-colors hover:text-red hover:border-red">
+            <button
+              onClick={() => exportReportPdf(reportData)}
+              className="font-mono text-[8.5px] tracking-[0.1em] uppercase text-ink-3 cursor-pointer border-b border-ink/[0.22] pb-[1px] transition-colors hover:text-red hover:border-red bg-transparent border-t-0 border-l-0 border-r-0 p-0"
+            >
               Export PDF ↗
-            </span>
+            </button>
           </div>
         </div>
 
@@ -247,7 +251,10 @@ const ReportPanel = ({ reportData, userTier }: ReportPanelProps) => {
             <a href="#" className="text-red no-underline hover:underline">Set up a workspace →</a>
           </span>
           <div className="flex gap-2">
-            <button className="border border-ink/[0.22] bg-transparent text-ink-3 px-3.5 py-[7px] font-mono text-[8.5px] tracking-[0.1em] uppercase cursor-pointer rounded-sm transition-all hover:border-ink hover:text-ink">
+            <button
+              onClick={() => exportReportPdf(reportData)}
+              className="border border-ink/[0.22] bg-transparent text-ink-3 px-3.5 py-[7px] font-mono text-[8.5px] tracking-[0.1em] uppercase cursor-pointer rounded-sm transition-all hover:border-ink hover:text-ink"
+            >
               Export PDF
             </button>
             <button className="border-none bg-ink text-paper px-3.5 py-[7px] font-mono text-[8.5px] tracking-[0.1em] uppercase cursor-pointer rounded-sm transition-colors hover:bg-red">
