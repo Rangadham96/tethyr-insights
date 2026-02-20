@@ -22,13 +22,14 @@ const Index = () => {
     currentPhase,
     skippedSources,
     errorMessage,
+    currentQuery: persistedQuery,
     runReport,
     reset,
   } = useReport();
 
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(persistedQuery || "");
   const [transitioning, setTransitioning] = useState(false);
-  const [showSplit, setShowSplit] = useState(false);
+  const [showSplit, setShowSplit] = useState(appState !== "landing");
   const [mobileTab, setMobileTab] = useState<"report" | "sources">("report");
   const isMobile = useIsMobile();
 
