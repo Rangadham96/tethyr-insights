@@ -125,6 +125,11 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
 /* Font families as utilities */
 @layer utilities {
   .font-display {

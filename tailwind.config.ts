@@ -102,6 +102,7 @@ export default {
         "section-in": "section-in 0.5s ease forwards",
         "report-in": "report-in 0.4s ease forwards",
         "scroll-bounce": "scroll-bounce 1.5s ease-in-out infinite",
+        "pulse-dot": "pulse-dot 1.5s ease-in-out infinite",
       },
     },
   },

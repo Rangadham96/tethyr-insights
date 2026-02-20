@@ -1,13 +1,14 @@
-import type { AppState, SourceInfo, ReportData } from "@/types/report";
+import type { AppState, SourceInfo, ReportData, PhaseEvent } from "@/types/report";
 import { SOURCE_REGISTRY } from "@/constants/sources";
 
 interface TickerProps {
   appState: AppState;
   sources: SourceInfo[];
   reportData: ReportData | null;
+  currentPhase?: PhaseEvent | null;
 }
 
-const Ticker = ({ appState, sources, reportData }: TickerProps) => {
+const Ticker = ({ appState, sources, reportData, currentPhase }: TickerProps) => {
   const getItems = (): Array<{ text: string; live: boolean; dot?: "red" | "green" }> => {
     switch (appState) {
       case "landing":
@@ -28,10 +29,12 @@ const Ticker = ({ appState, sources, reportData }: TickerProps) => {
               ? `${s.items_found} found`
               : s.status === "searching"
               ? "searching"
+              : s.status === "error"
+              ? "failed"
               : "queued"
           }`,
           live: s.status === "searching",
-          dot: s.status === "done" ? ("green" as const) : s.status === "searching" ? ("red" as const) : undefined,
+          dot: s.status === "done" ? ("green" as const) : s.status === "searching" ? ("red" as const) : s.status === "error" ? ("red" as const) : undefined,
         }));
       case "complete":
         return [
@@ -45,13 +48,30 @@ const Ticker = ({ appState, sources, reportData }: TickerProps) => {
     }
   };
 
+  const getBadgeLabel = (): string => {
+    if (appState === "searching" && currentPhase) {
+      switch (currentPhase.phase) {
+        case "classifying":
+          return "Classifying";
+        case "scraping":
+          return `Scraping ${currentPhase.detail.replace(/ sources? complete/, "").replace(/ of /, "/")}`;
+        case "synthesizing":
+          return "Synthesizing";
+        default:
+          return "Searching";
+      }
+    }
+    if (appState === "complete") return "Complete";
+    return "Tethyr Live";
+  };
+
   const items = getItems();
   const doubled = [...items, ...items];
 
   return (
     <div className="fixed top-0 left-0 right-0 z-[300] h-[26px] bg-ink flex items-center overflow-hidden">
       <div className="flex-shrink-0 h-full px-3.5 bg-red flex items-center font-mono text-[8.5px] tracking-[0.18em] uppercase text-paper border-r border-white/10">
-        {appState === "searching" ? "Searching" : "Tethyr Live"}
+        {getBadgeLabel()}
       </div>
       <div className="overflow-hidden flex-1">
         <div className="flex animate-ticker-scroll w-max">
