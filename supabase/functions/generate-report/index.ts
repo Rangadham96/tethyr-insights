@@ -828,15 +828,45 @@ interface TinyFishResult {
   error?: string;
 }
 
+// ═══════════════════════════════════════════════
+// TIERED TIMEOUTS PER PLATFORM
+// ═══════════════════════════════════════════════
+
+const PLATFORM_TIMEOUTS: Record<string, number> = {
+  // Slow tier — 600s (10 min)
+  reddit: 600_000,
+  facebook_groups_public: 600_000,
+  youtube_comments: 600_000,
+  patient_communities: 600_000,
+  discourse_forums: 600_000,
+  // Fast tier — 180s (3 min)
+  twitter_x: 180_000,
+  producthunt: 180_000,
+  quora: 180_000,
+  alternativeto: 180_000,
+  trustpilot: 180_000,
+  bbb_complaints: 180_000,
+  indie_review_sites: 180_000,
+  tiktok_comments: 180_000,
+  indiehackers: 180_000,
+  discord_public: 180_000,
+  job_postings: 180_000,
+};
+const DEFAULT_TIMEOUT = 300_000; // Medium tier — 300s (5 min)
+
+function getTimeout(platform: string): number {
+  return PLATFORM_TIMEOUTS[platform] ?? DEFAULT_TIMEOUT;
+}
+
 async function runTinyFishTask(
   task: TinyFishTask,
   apiKey: string,
+  timeoutMs: number,
+  send: (chunk: string) => void,
 ): Promise<TinyFishResult> {
-  const TINYFISH_TIMEOUT = 90_000; // 90 seconds per task
-
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), TINYFISH_TIMEOUT);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     const response = await fetch("https://agent.tinyfish.ai/v1/automation/run-sse", {
       method: "POST",
@@ -860,7 +890,6 @@ async function runTinyFishTask(
       return { platform: task.platform, success: false, data: null, error: `HTTP ${response.status}` };
     }
 
-    // Read the SSE stream from TinyFish
     const reader = response.body?.getReader();
     if (!reader) {
       return { platform: task.platform, success: false, data: null, error: "No response body" };
@@ -869,7 +898,6 @@ async function runTinyFishTask(
     const decoder = new TextDecoder();
     let buffer = "";
     let resultData: unknown = null;
-    const progressMessages: string[] = [];
 
     while (true) {
       const { done, value } = await reader.read();
@@ -888,7 +916,8 @@ async function runTinyFishTask(
           const event = JSON.parse(jsonStr);
 
           if (event.type === "PROGRESS" && event.purpose) {
-            progressMessages.push(event.purpose);
+            // Forward TinyFish progress to frontend in real time
+            send(logEvent(`${task.platform}: ${event.purpose}`, "searching"));
           } else if (event.type === "COMPLETE" && event.status === "COMPLETED") {
             resultData = event.resultJson || event.result || null;
           } else if (event.type === "COMPLETE" && event.status !== "COMPLETED") {
@@ -1068,6 +1097,7 @@ serve(async (req: Request) => {
 
       try {
         // ═══ STAGE 1: CLASSIFICATION ═══
+        send(sseEvent("phase_update", { phase: "classifying", detail: "Analyzing query..." }));
         send(logEvent("Classifying query and selecting optimal sources...", "searching"));
 
         const classificationPrompt = buildClassificationPrompt(query, intents);
@@ -1103,34 +1133,29 @@ serve(async (req: Request) => {
         }));
 
         send(logEvent(`Dispatching ${tasks.length} TinyFish agents in stealth mode...`, "info"));
+        send(sseEvent("phase_update", { phase: "scraping", detail: `0 of ${tasks.length} sources complete` }));
 
-        // ═══ STAGE 2: TINYFISH SCRAPING + QUALITY FILTERING ═══
+        // ═══ STAGE 2: TINYFISH SCRAPING + QUALITY FILTERING (INCREMENTAL) ═══
 
-        // Mark all sources as searching
-        for (const task of tasks) {
+        const filteredDataByPlatform: Array<{ platform: string; data: any }> = [];
+        let doneCount = 0;
+        const totalTasks = tasks.length;
+
+        // Each task independently streams its own SSE events as it completes
+        const wrapperPromises = tasks.map(async (task) => {
+          // Mark this source as searching
           send(sseEvent("source_update", {
             platform: task.platform,
             status: "searching",
             items_found: 0,
             message: `${task.platform}: starting scrape...`,
           }));
-        }
 
-        // Run all TinyFish tasks in parallel
-        const tinyFishPromises = tasks.map((task) => runTinyFishTask(task, TINYFISH_API_KEY));
-        const tinyFishResults = await Promise.allSettled(tinyFishPromises);
+          const timeoutMs = getTimeout(task.platform);
+          const result = await runTinyFishTask(task, TINYFISH_API_KEY, timeoutMs, send);
 
-        const filteredDataByPlatform: Array<{ platform: string; data: any }> = [];
-
-        for (let i = 0; i < tinyFishResults.length; i++) {
-          const task = tasks[i];
-          const settled = tinyFishResults[i];
-
-          if (settled.status === "rejected" || !settled.value.success) {
-            const error = settled.status === "rejected"
-              ? settled.reason?.message || "Unknown error"
-              : settled.value.error || "Failed";
-
+          if (!result.success) {
+            const error = result.error || "Failed";
             send(sseEvent("source_update", {
               platform: task.platform,
               status: "error",
@@ -1138,13 +1163,15 @@ serve(async (req: Request) => {
               message: `${task.platform}: ${error}`,
             }));
             send(logEvent(`${task.platform}: failed — ${error}`, "error"));
-            continue;
+            doneCount++;
+            send(sseEvent("phase_update", { phase: "scraping", detail: `${doneCount} of ${totalTasks} sources complete` }));
+            return null;
           }
 
-          const rawData = settled.value.data;
+          // TinyFish succeeded — run quality filter
+          const rawData = result.data;
           send(logEvent(`${task.platform}: data received, filtering for quality...`, "found"));
 
-          // Run quality filter through Gemini Flash
           try {
             const rawStr = typeof rawData === "string" ? rawData : JSON.stringify(rawData);
             const itemCount = Array.isArray(rawData) ? rawData.length : 1;
@@ -1163,7 +1190,6 @@ serve(async (req: Request) => {
             send(logEvent(`${task.platform}: ${itemsFound} items passed quality filter (${filtered.signal || "?"})`, "found"));
           } catch (filterErr) {
             console.error(`Quality filter failed for ${task.platform}:`, filterErr);
-            // Still include raw data if filter fails
             filteredDataByPlatform.push({ platform: task.platform, data: { signal: "UNFILTERED", items: rawData } });
             send(sseEvent("source_update", {
               platform: task.platform,
@@ -1172,7 +1198,13 @@ serve(async (req: Request) => {
               message: `${task.platform}: quality filter failed, using raw data`,
             }));
           }
-        }
+
+          doneCount++;
+          send(sseEvent("phase_update", { phase: "scraping", detail: `${doneCount} of ${totalTasks} sources complete` }));
+          return { platform: task.platform };
+        });
+
+        await Promise.allSettled(wrapperPromises);
 
         // Check if we have any data at all
         if (filteredDataByPlatform.length === 0) {
@@ -1182,6 +1214,7 @@ serve(async (req: Request) => {
         }
 
         // ═══ STAGE 3: SYNTHESIS ═══
+        send(sseEvent("phase_update", { phase: "synthesizing", detail: "Generating report..." }));
         send(logEvent("All sources collected. Synthesizing final report...", "searching"));
 
         const totalItems = filteredDataByPlatform.reduce((sum, p) => {

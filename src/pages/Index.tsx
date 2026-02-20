@@ -16,6 +16,7 @@ const Index = () => {
     reportData,
     userTier,
     classification,
+    currentPhase,
     skippedSources,
     errorMessage,
     runReport,
@@ -83,7 +84,7 @@ const Index = () => {
           transitioning ? "opacity-0" : "opacity-100"
         }`}
       >
-        <Ticker appState={showSplit ? (appState === "landing" ? "searching" : appState) : appState} sources={sources} reportData={reportData} />
+        <Ticker appState={showSplit ? (appState === "landing" ? "searching" : appState) : appState} sources={sources} reportData={reportData} currentPhase={currentPhase} />
 
         {/* Mobile tab bar */}
         <div className="flex border-b border-ink/[0.22] mt-[26px] bg-paper">
@@ -122,6 +123,7 @@ const Index = () => {
                   logLines={logLines}
                   sourcesTotal={sources.length}
                   sourcesDone={doneCount}
+                  currentPhase={currentPhase}
                 />
               )}
               {appState === "complete" && reportData && (
@@ -162,7 +164,7 @@ const Index = () => {
         transitioning ? "opacity-0" : "opacity-100"
       }`}
     >
-      <Ticker appState={showSplit ? (appState === "landing" ? "searching" : appState) : appState} sources={sources} reportData={reportData} />
+      <Ticker appState={showSplit ? (appState === "landing" ? "searching" : appState) : appState} sources={sources} reportData={reportData} currentPhase={currentPhase} />
       <div
         className="grid h-[calc(100vh-26px)] mt-[26px] relative z-[1]"
         style={{ gridTemplateColumns: "380px 1fr" }}
@@ -189,6 +191,7 @@ const Index = () => {
               logLines={logLines}
               sourcesTotal={sources.length}
               sourcesDone={doneCount}
+              currentPhase={currentPhase}
             />
           )}
 

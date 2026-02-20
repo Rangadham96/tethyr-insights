@@ -3,13 +3,15 @@ import type {
   LogEvent,
   ClassificationEvent,
   ReportData,
+  PhaseEvent,
 } from "@/types/report";
 
 export type SSEEvent =
   | { type: "source_update"; data: SourceUpdateEvent }
   | { type: "log"; data: LogEvent }
   | { type: "classification_complete"; data: ClassificationEvent }
-  | { type: "report_complete"; data: ReportData };
+  | { type: "report_complete"; data: ReportData }
+  | { type: "phase_update"; data: PhaseEvent };
 
 export function parseSSEEvent(eventType: string, rawData: string): SSEEvent | null {
   try {
@@ -23,6 +25,8 @@ export function parseSSEEvent(eventType: string, rawData: string): SSEEvent | nu
         return { type: "classification_complete", data: data as ClassificationEvent };
       case "report_complete":
         return { type: "report_complete", data: data as ReportData };
+      case "phase_update":
+        return { type: "phase_update", data: data as PhaseEvent };
       default:
         return null;
     }

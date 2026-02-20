@@ -6,6 +6,7 @@ import type {
   LogEvent,
   ReportData,
   ClassificationEvent,
+  PhaseEvent,
 } from "@/types/report";
 import { startLiveStream } from "@/services/api";
 import { SOURCE_REGISTRY } from "@/constants/sources";
@@ -18,6 +19,7 @@ export function useReport() {
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [userTier, setUserTier] = useState<UserTier>("free");
   const [classification, setClassification] = useState<ClassificationEvent | null>(null);
+  const [currentPhase, setCurrentPhase] = useState<PhaseEvent | null>(null);
   const [skippedSources, setSkippedSources] = useState<
     Array<{ platform: string; display_name: string; reason: string }>
   >([]);
@@ -65,6 +67,11 @@ export function useReport() {
         setAppState("complete");
         break;
       }
+      case "phase_update": {
+        const phase = data as PhaseEvent;
+        setCurrentPhase(phase);
+        break;
+      }
       case "error": {
         const err = data as { message: string };
         setAppState("error");
@@ -82,6 +89,7 @@ export function useReport() {
       setLogLines([]);
       setReportData(null);
       setClassification(null);
+      setCurrentPhase(null);
       setSkippedSources([]);
       setErrorMessage("");
 
@@ -108,6 +116,7 @@ export function useReport() {
     setLogLines([]);
     setReportData(null);
     setClassification(null);
+    setCurrentPhase(null);
     setSkippedSources([]);
     setErrorMessage("");
   }, []);
@@ -130,6 +139,7 @@ export function useReport() {
     userTier,
     setUserTier,
     classification,
+    currentPhase,
     skippedSources,
     errorMessage,
     runReport,

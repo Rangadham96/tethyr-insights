@@ -104,6 +104,11 @@ export interface ReportData {
   };
 }
 
+export interface PhaseEvent {
+  phase: "classifying" | "scraping" | "synthesizing";
+  detail: string;
+}
+
 export interface SourceInfo {
   platform: string;
   display_name: string;
