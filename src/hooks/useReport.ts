@@ -12,18 +12,56 @@ import { startLiveStream } from "@/services/api";
 import { SOURCE_REGISTRY } from "@/constants/sources";
 import { supabase } from "@/integrations/supabase/client";
 
+const SESSION_KEY = "tethyr_report_state";
+
+interface PersistedState {
+  appState: AppState;
+  sources: SourceInfo[];
+  logLines: LogEvent[];
+  reportData: ReportData | null;
+  classification: ClassificationEvent | null;
+  currentPhase: PhaseEvent | null;
+  skippedSources: Array<{ platform: string; display_name: string; reason: string }>;
+  query: string;
+  timestamp: number;
+}
+
+function loadPersistedState(): PersistedState | null {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedState;
+    // Only restore completed reports (not stale searching states)
+    if (parsed.appState === "complete" && parsed.reportData) return parsed;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function persistState(state: PersistedState) {
+  try {
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(state));
+  } catch {
+    // sessionStorage full or unavailable
+  }
+}
+
 export function useReport() {
-  const [appState, setAppState] = useState<AppState>("landing");
-  const [sources, setSources] = useState<SourceInfo[]>([]);
-  const [logLines, setLogLines] = useState<LogEvent[]>([]);
-  const [reportData, setReportData] = useState<ReportData | null>(null);
+  const persisted = useRef(loadPersistedState());
+
+  const [appState, setAppState] = useState<AppState>(persisted.current?.appState ?? "landing");
+  const [sources, setSources] = useState<SourceInfo[]>(persisted.current?.sources ?? []);
+  const [logLines, setLogLines] = useState<LogEvent[]>(persisted.current?.logLines ?? []);
+  const [reportData, setReportData] = useState<ReportData | null>(persisted.current?.reportData ?? null);
   const [userTier, setUserTier] = useState<UserTier>("free");
-  const [classification, setClassification] = useState<ClassificationEvent | null>(null);
-  const [currentPhase, setCurrentPhase] = useState<PhaseEvent | null>(null);
+  const [classification, setClassification] = useState<ClassificationEvent | null>(persisted.current?.classification ?? null);
+  const [currentPhase, setCurrentPhase] = useState<PhaseEvent | null>(persisted.current?.currentPhase ?? null);
   const [skippedSources, setSkippedSources] = useState<
     Array<{ platform: string; display_name: string; reason: string }>
-  >([]);
+  >(persisted.current?.skippedSources ?? []);
   const [errorMessage, setErrorMessage] = useState("");
+  const [currentQuery, setCurrentQuery] = useState(persisted.current?.query ?? "");
 
   const cleanupRef = useRef<(() => void) | null>(null);
 
@@ -65,6 +103,33 @@ export function useReport() {
         const report = data as ReportData;
         setReportData(report);
         setAppState("complete");
+        // Persist to sessionStorage so it survives tab switches
+        setSources((currentSources) => {
+          setClassification((currentClassification) => {
+            setCurrentPhase((currentPhaseVal) => {
+              setSkippedSources((currentSkipped) => {
+                setLogLines((currentLogs) => {
+                  persistState({
+                    appState: "complete",
+                    sources: currentSources,
+                    logLines: currentLogs,
+                    reportData: report,
+                    classification: currentClassification,
+                    currentPhase: currentPhaseVal,
+                    skippedSources: currentSkipped,
+                    query: currentQuery,
+                    timestamp: Date.now(),
+                  });
+                  return currentLogs;
+                });
+                return currentSkipped;
+              });
+              return currentPhaseVal;
+            });
+            return currentClassification;
+          });
+          return currentSources;
+        });
         break;
       }
       case "phase_update": {
@@ -79,12 +144,14 @@ export function useReport() {
         break;
       }
     }
-  }, []);
+  }, [currentQuery]);
 
   const runReport = useCallback(
     async (query: string, intents: string[]) => {
       // Reset state
       setAppState("searching");
+      setCurrentQuery(query);
+      sessionStorage.removeItem(SESSION_KEY);
       setSources([]);
       setLogLines([]);
       setReportData(null);
@@ -111,6 +178,7 @@ export function useReport() {
   const reset = useCallback(() => {
     cleanupRef.current?.();
     cleanupRef.current = null;
+    sessionStorage.removeItem(SESSION_KEY);
     setAppState("idle");
     setSources([]);
     setLogLines([]);
@@ -119,6 +187,7 @@ export function useReport() {
     setCurrentPhase(null);
     setSkippedSources([]);
     setErrorMessage("");
+    setCurrentQuery("");
   }, []);
 
   const goToIdle = useCallback(() => {
@@ -142,6 +211,7 @@ export function useReport() {
     currentPhase,
     skippedSources,
     errorMessage,
+    currentQuery,
     runReport,
     reset,
     goToIdle,
