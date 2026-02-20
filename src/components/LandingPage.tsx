@@ -147,13 +147,16 @@ const LandingPage = ({ onRunReport, isSearching, appState }: LandingPageProps) =
       </nav>
 
       {/* Section 1: Hero */}
-      <section className="relative flex flex-col items-center justify-center px-5 md:px-12 pt-[80px] md:pt-[100px] pb-[40px] md:pb-[80px] z-[1] overflow-hidden">
+      <section className="relative flex flex-col items-center min-h-screen px-5 md:px-12 pt-[80px] md:pt-[100px] pb-6 md:pb-8 z-[1] overflow-hidden">
         {/* Background TRUTH text */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none" aria-hidden="true">
           <span className="font-display font-bold text-ink/[0.03] whitespace-nowrap" style={{ fontSize: "clamp(80px, 20vw, 260px)", letterSpacing: "-0.04em" }}>
             TRUTH
           </span>
         </div>
+
+        {/* Spacer to push content to center */}
+        <div className="flex-1" />
 
         <div className="relative z-10 text-center max-w-[900px] mx-auto">
           {/* Eyebrow */}
@@ -194,8 +197,11 @@ const LandingPage = ({ onRunReport, isSearching, appState }: LandingPageProps) =
           </div>
         </div>
 
+        {/* Spacer to push scroll hint to bottom */}
+        <div className="flex-1" />
+
         {/* Scroll hint */}
-        <div className="mt-10 md:mt-16 flex flex-col items-center gap-1.5 opacity-50 animate-scroll-bounce">
+        <div className="flex flex-col items-center gap-1.5 opacity-50 animate-scroll-bounce">
           <span className="font-mono text-[8px] tracking-[0.14em] uppercase text-ink-4">Scroll to learn more</span>
           <div className="w-px h-4 md:h-6 bg-ink-4" />
         </div>
