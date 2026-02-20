@@ -912,8 +912,102 @@ function transformTasks(tasks: TinyFishTask[], classification: any): TinyFishTas
 }
 
 // ═══════════════════════════════════════════════
-// TIERED TIMEOUTS PER PLATFORM
+// FALLBACK SOURCE MAP
+// When a platform is blocked (403, 429, empty),
+// automatically substitute a replacement source
 // ═══════════════════════════════════════════════
+
+interface FallbackDef {
+  platform: string;
+  label: string;
+  url_or_query: string;
+  goalTemplate: (topic: string) => string;
+}
+
+function getFallback(
+  failedPlatform: string,
+  originalTask: TinyFishTask,
+  classification: any,
+): FallbackDef | null {
+  // Extract a search topic from the original task goal
+  const topic = originalTask.goal.match(/search for ['"]?([^'",.]+)['"]?/i)?.[1]
+    || originalTask.extract?.fields?.[0]
+    || "the topic";
+
+  switch (failedPlatform) {
+    case "apple_app_store":
+      return {
+        platform: "google_play_store",
+        label: "Google Play Store",
+        url_or_query: "https://play.google.com/store/search?q=" + encodeURIComponent(topic) + "&c=apps",
+        goalTemplate: (t) =>
+          `Go to the Google Play Store and search for '${t}'. Open the top result. Navigate to the Reviews section. Sort by Most Recent and filter by 1-star and 2-star ratings. Extract the 20 most recent negative reviews including review text, star rating, date, and reviewer name.`,
+      };
+
+    case "youtube_comments":
+      return {
+        platform: "reddit",
+        label: "Reddit video discussions",
+        url_or_query: `https://www.reddit.com/search/?q=${encodeURIComponent(topic + " review video")}&sort=relevance&t=year`,
+        goalTemplate: (t) =>
+          `Go to Reddit and search for '${t} review video'. Open the top 5 threads. Extract the top 15 comments from each thread including comment text, upvote count, subreddit name, and relative date. Focus on comments discussing product experiences and opinions.`,
+      };
+
+    case "tiktok_comments":
+      return {
+        platform: "quora",
+        label: "Quora",
+        url_or_query: `https://www.quora.com/search?q=${encodeURIComponent(topic)}`,
+        goalTemplate: (t) =>
+          `Go to Quora and search for '${t}'. Open the top 5 questions. Extract the top 3 answers from each question including answer text, author name, upvote count, and date. Focus on personal experiences and opinions.`,
+      };
+
+    case "facebook_groups_public": {
+      const marketType = classification?.market_type || "";
+      if (marketType === "HEALTH_WELLNESS") {
+        return {
+          platform: "patient_communities",
+          label: "HealthUnlocked",
+          url_or_query: `https://healthunlocked.com/search/${encodeURIComponent(topic)}`,
+          goalTemplate: (t) =>
+            `Go to HealthUnlocked.com and search for '${t}'. Open the top 10 discussion threads. Extract the original post and top 5 replies from each thread including post text, author name, community name, and date.`,
+        };
+      }
+      return {
+        platform: "reddit",
+        label: "Reddit communities",
+        url_or_query: `https://www.reddit.com/search/?q=${encodeURIComponent(topic)}&sort=relevance&t=year`,
+        goalTemplate: (t) =>
+          `Go to Reddit and search for '${t}'. Open the top 5 threads from relevant communities. Extract the top 15 comments from each thread including comment text, upvote count, subreddit name, and relative date.`,
+      };
+    }
+
+    default:
+      return null;
+  }
+}
+
+function isBlockingError(result: TinyFishResult): boolean {
+  if (!result.success) {
+    const err = (result.error || "").toLowerCase();
+    if (err.includes("403") || err.includes("429") || err.includes("blocked") || err.includes("forbidden") || err.includes("rate limit")) {
+      return true;
+    }
+  }
+  // Check for empty results (platform loaded but returned nothing)
+  if (result.success) {
+    const data = result.data;
+    if (data === null || data === undefined) return true;
+    if (Array.isArray(data) && data.length === 0) return true;
+    if (typeof data === "object" && !Array.isArray(data)) {
+      const values = Object.values(data as Record<string, unknown>);
+      const allEmpty = values.every(v => v === null || v === undefined || (Array.isArray(v) && v.length === 0) || v === "");
+      if (allEmpty) return true;
+    }
+  }
+  return false;
+}
+
 
 const PLATFORM_TIMEOUTS: Record<string, number> = {
   // Slow tier — 600s (10 min)
@@ -1241,7 +1335,42 @@ serve(async (req: Request) => {
           }));
 
           const timeoutMs = getTimeout(task.platform);
-          const result = await runTinyFishTask(task, TINYFISH_API_KEY, timeoutMs, send);
+          let result = await runTinyFishTask(task, TINYFISH_API_KEY, timeoutMs, send);
+
+          // ── FALLBACK LOGIC: if blocked or empty, try substitute source ──
+          if (isBlockingError(result)) {
+            const fallback = getFallback(task.platform, task, classification);
+            if (fallback) {
+              const displayName = task.platform.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
+              send(logEvent(`${displayName} blocked — switching to ${fallback.label}.`, "info"));
+              send(sseEvent("source_update", {
+                platform: task.platform,
+                status: "searching",
+                items_found: 0,
+                message: `${displayName} blocked — falling back to ${fallback.label}`,
+              }));
+
+              const topic = task.goal.match(/search for ['"]?([^'",.]+)['"]?/i)?.[1] || "the topic";
+              const fallbackTask: TinyFishTask = {
+                platform: fallback.platform,
+                url_or_query: fallback.url_or_query,
+                goal: fallback.goalTemplate(topic),
+                selection_reason: `Fallback for blocked ${displayName}`,
+                extract: task.extract,
+              };
+
+              const fallbackTimeout = getTimeout(fallback.platform);
+              result = await runTinyFishTask(fallbackTask, TINYFISH_API_KEY, fallbackTimeout, send);
+
+              // Use fallback platform name for downstream processing
+              if (result.success) {
+                result.platform = fallback.platform;
+                send(logEvent(`${fallback.label}: fallback succeeded`, "found"));
+              } else {
+                send(logEvent(`${fallback.label}: fallback also failed — ${result.error || "unknown"}`, "error"));
+              }
+            }
+          }
 
           if (!result.success) {
             const error = result.error || "Failed";
@@ -1259,38 +1388,39 @@ serve(async (req: Request) => {
 
           // TinyFish succeeded — run quality filter
           const rawData = result.data;
-          send(logEvent(`${task.platform}: data received, filtering for quality...`, "found"));
+          const activePlatform = result.platform;
+          send(logEvent(`${activePlatform}: data received, filtering for quality...`, "found"));
 
           try {
             const rawStr = typeof rawData === "string" ? rawData : JSON.stringify(rawData);
             const itemCount = Array.isArray(rawData) ? rawData.length : 1;
-            const filterPrompt = buildQualityFilterPrompt(task.platform, itemCount, query);
+            const filterPrompt = buildQualityFilterPrompt(activePlatform, itemCount, query);
             const filtered = await callGeminiJSON(filterPrompt, "google/gemini-2.5-flash", rawStr) as any;
 
             const itemsFound = filtered.items?.length || 0;
-            filteredDataByPlatform.push({ platform: task.platform, data: filtered });
+            filteredDataByPlatform.push({ platform: activePlatform, data: filtered });
 
             send(sseEvent("source_update", {
               platform: task.platform,
               status: "done",
               items_found: itemsFound,
-              message: `${task.platform}: ${itemsFound} quality items (signal: ${filtered.signal || "unknown"})`,
+              message: `${activePlatform}: ${itemsFound} quality items (signal: ${filtered.signal || "unknown"})`,
             }));
-            send(logEvent(`${task.platform}: ${itemsFound} items passed quality filter (${filtered.signal || "?"})`, "found"));
+            send(logEvent(`${activePlatform}: ${itemsFound} items passed quality filter (${filtered.signal || "?"})`, "found"));
           } catch (filterErr) {
-            console.error(`Quality filter failed for ${task.platform}:`, filterErr);
-            filteredDataByPlatform.push({ platform: task.platform, data: { signal: "UNFILTERED", items: rawData } });
+            console.error(`Quality filter failed for ${activePlatform}:`, filterErr);
+            filteredDataByPlatform.push({ platform: activePlatform, data: { signal: "UNFILTERED", items: rawData } });
             send(sseEvent("source_update", {
               platform: task.platform,
               status: "done",
               items_found: Array.isArray(rawData) ? rawData.length : 1,
-              message: `${task.platform}: quality filter failed, using raw data`,
+              message: `${activePlatform}: quality filter failed, using raw data`,
             }));
           }
 
           doneCount++;
           send(sseEvent("phase_update", { phase: "scraping", detail: `${doneCount} of ${totalTasks} sources complete` }));
-          return { platform: task.platform };
+          return { platform: activePlatform };
         });
 
         await Promise.allSettled(wrapperPromises);
