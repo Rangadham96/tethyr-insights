@@ -1,6 +1,7 @@
 import { useState } from "react";
 import SearchInput from "@/components/SearchInput";
 import { SOURCE_REGISTRY } from "@/constants/sources";
+import { useAuth } from "@/hooks/useAuth";
 import type { AppState, SourceInfo } from "@/types/report";
 
 interface LeftPanelProps {
@@ -20,7 +21,17 @@ const LeftPanel = ({
   query,
   onQueryChange,
 }: LeftPanelProps) => {
+  const { signOut } = useAuth();
   const [showSkipped, setShowSkipped] = useState(false);
+
+  const SignOutButton = () => (
+    <button
+      onClick={() => signOut()}
+      className="font-mono text-[8px] text-ink-5 tracking-[0.06em] bg-transparent border-none cursor-pointer hover:text-red transition-colors uppercase"
+    >
+      Sign out
+    </button>
+  );
 
   const isSearching = appState === "searching";
   const isComplete = appState === "complete";
@@ -186,14 +197,13 @@ const LeftPanel = ({
       )}
 
       {/* Footer */}
-      <div className="mt-auto px-7 py-3.5 border-t border-ink/[0.22] flex-shrink-0">
+      <div className="mt-auto px-7 py-3.5 border-t border-ink/[0.22] flex-shrink-0 flex items-center justify-between">
         <div className="font-mono text-[8px] text-ink-5 tracking-[0.06em] leading-[1.6]">
-          No account needed for first report.
-          <br />
           <a href="#" className="text-red no-underline hover:underline">
-            Set up daily workspace for your company →
+            Set up daily workspace →
           </a>
         </div>
+        <SignOutButton />
       </div>
     </div>
   );
