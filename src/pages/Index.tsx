@@ -1,14 +1,17 @@
 import { useState, useCallback } from "react";
 import { useReport } from "@/hooks/useReport";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useAuth } from "@/hooks/useAuth";
 import Ticker from "@/components/Ticker";
 import LeftPanel from "@/components/LeftPanel";
 import ReportPanel from "@/components/ReportPanel";
 import EmptyState from "@/components/EmptyState";
 import SearchingState from "@/components/SearchingState";
 import LandingPage from "@/components/LandingPage";
+import AuthCTA from "@/components/AuthCTA";
 
 const Index = () => {
+  const { isAuthenticated } = useAuth();
   const {
     appState,
     sources,
@@ -127,7 +130,10 @@ const Index = () => {
                 />
               )}
               {appState === "complete" && reportData && (
-                <ReportPanel reportData={reportData} userTier={userTier} />
+                <>
+                  {!isAuthenticated && <AuthCTA />}
+                  <ReportPanel reportData={reportData} userTier={userTier} />
+                </>
               )}
               {appState === "error" && (
                 <div className="flex flex-col items-center justify-center h-full px-6">
@@ -196,7 +202,10 @@ const Index = () => {
           )}
 
           {appState === "complete" && reportData && (
-            <ReportPanel reportData={reportData} userTier={userTier} />
+            <>
+              {!isAuthenticated && <AuthCTA />}
+              <ReportPanel reportData={reportData} userTier={userTier} />
+            </>
           )}
 
           {appState === "error" && (
