@@ -66,7 +66,7 @@ const PRICING = [
     cta: "Run free report →",
   },
   {
-    name: "Founder", price: "$29", period: "per month", featured: true,
+    name: "Founder", price: "$29", period: "per month", featured: false,
     features: ["Unlimited reports", "All 5 sections unlocked", "Report history saved", "PDF export", "Priority source coverage"],
     cta: "Start founder plan →",
   },
@@ -398,34 +398,28 @@ const LandingPage = ({ onRunReport, isSearching, appState }: LandingPageProps) =
             {PRICING.map((plan, i) => (
               <div
                 key={plan.name}
-                className={`px-4 md:px-6 py-5 md:py-7 ${i % 2 === 0 ? "border-r border-ink/[0.22]" : ""} ${i < 2 ? "border-b md:border-b-0 border-ink/[0.22]" : ""} ${i < 3 ? "md:border-r border-ink/[0.22]" : ""} ${
-                  (plan as any).featured ? "bg-paper-darker" : ""
-                }`}
+                className={`group px-4 md:px-6 py-5 md:py-7 transition-all duration-300 hover:bg-paper-darker/50 ${i % 2 === 0 ? "border-r border-ink/[0.22]" : ""} ${i < 2 ? "border-b md:border-b-0 border-ink/[0.22]" : ""} ${i < 3 ? "md:border-r border-ink/[0.22]" : ""}`}
               >
                 <div className="font-mono text-[8px] md:text-[9px] tracking-[0.14em] uppercase mb-3 md:mb-4 text-ink-4">
                   {plan.name}
                 </div>
-                <div className="font-display text-[24px] md:text-[36px] font-bold leading-none mb-1 text-ink">
+                <div className="font-display text-[24px] md:text-[36px] font-bold leading-none mb-1 text-ink transition-transform duration-300 group-hover:translate-x-1">
                   {plan.price}
                 </div>
                 <div className="font-mono text-[7px] md:text-[9px] tracking-[0.06em] mb-4 md:mb-5 text-ink-4">
                   {plan.period}
                 </div>
-                <div className="h-px mb-4 md:mb-5 bg-ink/10" />
+                <div className="h-px mb-4 md:mb-5 bg-ink/10 transition-all duration-300 group-hover:bg-red/30" />
                 <div className="flex flex-col gap-1.5 md:gap-2 mb-4 md:mb-6">
                   {plan.features.map((f, j) => (
-                    <div key={j} className="font-body text-[11px] md:text-[13.5px] leading-[1.4] flex items-start gap-1.5 md:gap-2 text-ink-3">
-                      <span className="font-mono text-[9px] md:text-[10px] flex-shrink-0 mt-[1px] md:mt-[2px] text-red-soft">→</span>
+                    <div key={j} className="font-body text-[11px] md:text-[13.5px] leading-[1.4] flex items-start gap-1.5 md:gap-2 text-ink-3 transition-colors duration-200 group-hover:text-ink-2">
+                      <span className="font-mono text-[9px] md:text-[10px] flex-shrink-0 mt-[1px] md:mt-[2px] text-red-soft transition-transform duration-300 group-hover:translate-x-0.5">→</span>
                       {f}
                     </div>
                   ))}
                 </div>
                 <button
-                  className={`w-full py-2 md:py-2.5 rounded-sm font-mono text-[8px] md:text-[9px] tracking-[0.12em] uppercase cursor-pointer transition-all ${
-                    (plan as any).featured
-                      ? "bg-ink border border-ink text-paper hover:bg-ink/90"
-                      : "bg-transparent border border-ink/[0.22] text-ink-3 hover:border-ink hover:text-ink"
-                  }`}
+                  className="w-full py-2 md:py-2.5 rounded-sm font-mono text-[8px] md:text-[9px] tracking-[0.12em] uppercase cursor-pointer transition-all duration-300 bg-transparent border border-ink/[0.22] text-ink-3 hover:border-ink hover:text-ink hover:bg-ink hover:text-paper"
                 >
                   {plan.cta}
                 </button>
