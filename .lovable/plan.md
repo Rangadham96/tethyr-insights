@@ -1,170 +1,165 @@
 
 
-# Three-Stage Intelligence Pipeline — Final Implementation Plan
+# Fix Backend Streaming, Tiered Timeouts, Phase Tracking, and Searching UX
 
-## Overview
+## Problems and Fixes
 
-Build the complete product pipeline as a single Lovable Cloud backend function. Gemini classifies the query into TinyFish tasks, TinyFish scrapes in parallel, Gemini filters and synthesizes into a structured report. The frontend connects via SSE for real-time progress.
+### 1. Backend: Progress stuck because TinyFish results stream all at once
 
-## Prerequisites
+**Root cause:** Lines 1119-1121 use `Promise.allSettled` on all TinyFish tasks, then process results sequentially in a `for` loop (lines 1125-1170). No SSE events stream during the 3-6 minute wait.
 
-- Store your **TinyFish API key** as a secret (`TINYFISH_API_KEY`)
+**Fix:** Wrap each TinyFish task in an async function that independently sends SSE events (`source_update`, `log`) the moment that individual task completes and is filtered. All wrappers run in parallel via `Promise.allSettled`, but each one streams its own progress incrementally.
 
-## TinyFish API Contract (from official docs)
+### 2. Backend: Tiered timeouts per platform
 
-Based on the full documentation review:
+Instead of a single timeout, define a `PLATFORM_TIMEOUTS` map with three tiers:
 
-```text
-POST https://agent.tinyfish.ai/v1/automation/run-sse
-Headers:
-  X-API-Key: <TINYFISH_API_KEY>
-  Content-Type: application/json
-Body:
-  {
-    "url": "https://example.com",         (required)
-    "goal": "plain English instruction",   (required)
-    "browser_profile": "stealth",          (optional: "lite" or "stealth")
-    "proxy_config": {                      (optional)
-      "enabled": true,
-      "country_code": "US"
-    }
-  }
-```
+| Tier | Timeout | Platforms |
+|------|---------|-----------|
+| Slow | 600s (10 min) | reddit, facebook_groups_public, youtube_comments, patient_communities, discourse_forums |
+| Medium | 300s (5 min) | hackernews, g2, capterra, apple_app_store, google_play_store, chrome_web_store, glassdoor, amazon_reviews, stackoverflow, linkedin_comments, academic_papers, substack_comments, podcast_transcripts |
+| Fast | 180s (3 min) | twitter_x, producthunt, quora, alternativeto, trustpilot, bbb_complaints, indie_review_sites, tiktok_comments, indiehackers, discord_public, job_postings |
 
-**SSE response events from TinyFish:**
-- `STARTED` — `{ type: "STARTED", runId, timestamp }`
-- `STREAMING_URL` — optional, live browser view URL
-- `PROGRESS` — `{ type: "PROGRESS", runId, purpose, timestamp }` (intermediate steps like "Clicking submit button")
-- `HEARTBEAT` — keep-alive messages
-- `COMPLETE` — `{ type: "COMPLETE", runId, status: "COMPLETED", resultJson: {...}, timestamp }`
+The `runTinyFishTask` function will accept a `timeoutMs` parameter. The caller looks up the platform in the map, defaulting to 300s for unknown platforms.
 
-The scraped data we need lives in `resultJson` inside the `COMPLETE` event.
+### 3. Backend: TinyFish PROGRESS events not forwarded
 
-**Implementation detail:** We will use `browser_profile: "stealth"` by default since we're scraping real sites (Reddit, App Store, YouTube, etc.) that may have bot detection.
+**Root cause:** `runTinyFishTask` collects `progressMessages` in an array (line 872) but never returns or streams them.
 
-## Architecture
+**Fix:** Pass a `send` callback into `runTinyFishTask`. On each TinyFish `PROGRESS` event, immediately call `send(logEvent(...))` to forward it to the frontend as a log line (e.g., "Reddit: Navigating to search results...").
 
-```text
-Frontend (POST { query, intents })
-    |
-    v
-Backend Function: generate-report (SSE response stream)
-    |
-    |-- Stage 1: Gemini 2.5 Pro (Prompt 1)
-    |   - Classifies query (market type, audience, maturity, intent)
-    |   - Produces 6-10 TinyFish tasks with exact URLs + goals
-    |   - Streams: classification_complete, log events
-    |
-    |-- Stage 2: TinyFish (parallel) + Gemini 2.5 Flash (Prompt 2)
-    |   - For each task:
-    |     - POST to agent.tinyfish.ai/v1/automation/run-sse
-    |       with { url, goal, browser_profile: "stealth" }
-    |     - Read SSE stream, collect PROGRESS events as log lines
-    |     - Extract resultJson from COMPLETE event
-    |     - Run Gemini Flash (Prompt 2) to quality-filter raw data
-    |     - Stream: source_update (searching -> done), log events
-    |   - All tasks run in parallel
-    |
-    |-- Stage 3: Gemini 2.5 Pro (Prompt 3)
-    |   - Receives all filtered data from all platforms
-    |   - Produces final structured report JSON
-    |   - Backend normalizes to match frontend ReportData interface
-    |   - Streams: report_complete event
-    |
-    |-- Save completed report to database
-```
+### 4. New SSE event: `phase_update`
 
-## What Gets Built
+Add a new event type so the frontend knows the high-level pipeline stage:
+- `{ phase: "classifying", detail: "Analyzing query..." }`
+- `{ phase: "scraping", detail: "3 of 8 sources complete" }`
+- `{ phase: "synthesizing", detail: "Generating report..." }`
 
-### 1. Secret: TINYFISH_API_KEY
+Emitted at key transitions in the edge function.
 
-You will be prompted to securely store your TinyFish API key.
+### 5. Ticker: Show pipeline phase
 
-### 2. Backend Function: `generate-report`
+The ticker badge (line 54 of Ticker.tsx) currently just says "Searching". Update to accept a `currentPhase` prop and display: "Classifying" / "Scraping 3/8" / "Synthesizing" / "Complete".
 
-Single file: `supabase/functions/generate-report/index.ts`
+### 6. SearchingState: Classification card (already exists, verify it works)
 
-**Request:** POST with `{ query, intents }`
-**Response:** SSE stream with events matching frontend expectations
+The classification card at lines 31-42 of SearchingState.tsx already matches the spec exactly (amber left border, market type in mono uppercase, routing rationale in italic). It will be kept as-is and verified to stay visible throughout the wait.
 
-Contains:
-- **3 prompt functions** stored separately, exactly as you provided — no modifications
-  - `buildClassificationPrompt(query, intents)` — your Prompt 1 verbatim
-  - `buildQualityFilterPrompt(platform, itemCount, query)` — your Prompt 2 verbatim
-  - `buildSynthesisPrompt(platformCount, totalItems, query, intents)` — your Prompt 3 verbatim
+### 7. SearchingState: Phase banner, time estimate, animations, tips
 
-- **TinyFish client** using:
-  - `POST https://agent.tinyfish.ai/v1/automation/run-sse`
-  - Header: `X-API-Key` from secret
-  - Body: `{ url, goal, browser_profile: "stealth" }`
-  - Reads SSE stream, forwards `PROGRESS` events as log lines to frontend
-  - Extracts `resultJson` from `COMPLETE` event as raw scraped data
+- Add a **phase banner** at the very top (above query) showing current stage: "STAGE 2 OF 3 -- SCRAPING PLATFORMS" with "~3-5 min remaining"
+- Add a **pulsing dot** animation on the latest log line to show active progress
+- Show **stage progress text**: "4 of 8 sources complete"
+- When synthesis starts: "Generating your intelligence report..."
+- Add rotating **contextual tips** during long waits (e.g., "TinyFish agents are browsing Reddit in stealth mode right now...")
 
-- **Schema normalizer** that maps Gemini Prompt 3 output to frontend `ReportData` interface:
-  - `problem_validation.evidence` mapped to `problem_validation.quotes`
-  - flat `feature_gaps` array mapped to `{ gaps: [...] }`
-  - flat `competitor_weaknesses` array mapped to `{ competitors: [...] }`
-  - flat `audience_language` array mapped to `{ phrases: [...] }`
-  - flat `build_recommendations` array mapped to `{ recommendations: [...] }`
+### 8. Layout: Fix clipped headers
 
-- **Error handling:**
-  - TinyFish task fails: platform marked `status: "error"`, excluded from Stage 3
-  - Gemini returns invalid JSON: retry once, then fail gracefully
-  - All platforms fail: stream error event to frontend
-
-### 3. Frontend API Update
-
-**`src/services/api.ts`:**
-- `submitReport()` now constructs the full backend function URL and opens a fetch-based SSE connection
-- Reads the SSE stream and dispatches events to `useReport` handlers
-- Mock mode remains as fallback (when no `TINYFISH_API_KEY` is configured, or for local dev)
-
-**`src/hooks/useReport.ts`:**
-- Minor update to call the new streaming API
-- Event handling stays the same — event names (`classification_complete`, `source_update`, `log`, `report_complete`) are unchanged
-
-### 4. Database Persistence
-
-On `report_complete`, the backend function saves to the `reports` table:
-- `query`, `status: "complete"`, full report JSON in `report_data`
-- Classification metadata
-
-## SSE Event Timeline (what the frontend receives)
-
-```text
-1. log: "Classifying query and selecting optimal sources..."
-2. classification_complete: { market_type, sources_selected, sources_skipped, ... }
-3. log: "Dispatching 8 TinyFish agents in stealth mode..."
-4. source_update: { platform: "reddit", status: "searching" }
-5. log: "Reddit: Navigating to r/mentalhealth..."         (from TinyFish PROGRESS)
-6. source_update: { platform: "reddit", status: "done", items_found: 34 }
-7. (repeat for each platform, arriving as they complete)
-8. log: "All sources collected. Synthesizing report..."
-9. report_complete: { full ReportData JSON }
-```
-
-## Model Selection
-
-| Stage | Model | Reason |
-|-------|-------|--------|
-| 1 (Classification) | google/gemini-2.5-pro | Complex routing logic with 30+ source rules |
-| 2 (Quality Filter) | google/gemini-2.5-flash | Runs per-platform, needs speed. Simple filter task. |
-| 3 (Synthesis) | google/gemini-2.5-pro | Final report requires deep reasoning across all data |
-
-## Implementation Order
-
-1. Prompt you to add TinyFish API key as a secret
-2. Create `supabase/functions/generate-report/index.ts` with all 3 stages, 3 prompts verbatim, TinyFish client with exact API format
-3. Update `src/services/api.ts` to call the backend function with SSE streaming
-4. Update `src/hooks/useReport.ts` to use the new flow
-5. Deploy and test end-to-end
+Verify `mt-[26px]` offset is consistent. Remove any sticky positioning inside SearchingState that could clip under the fixed ticker.
 
 ## Files Changed
 
-| File | Action |
+| File | Change |
 |------|--------|
-| `supabase/functions/generate-report/index.ts` | Create |
-| `src/services/api.ts` | Update |
-| `src/hooks/useReport.ts` | Update |
-| `src/types/report.ts` | Minor updates if needed |
+| `supabase/functions/generate-report/index.ts` | Tiered timeouts, incremental streaming per task, forward PROGRESS events, add phase_update events |
+| `src/types/report.ts` | Add `PhaseEvent` type |
+| `src/hooks/useReport.ts` | Add `currentPhase` state, handle `phase_update` event, expose to Index |
+| `src/components/Ticker.tsx` | Accept `currentPhase` prop, show phase in badge |
+| `src/components/SearchingState.tsx` | Accept `currentPhase` prop, add phase banner, time estimate, pulse animation, rotating tips |
+| `src/pages/Index.tsx` | Pass `currentPhase` to Ticker and SearchingState |
+| `src/index.css` | Add pulse-dot keyframe animation |
+
+## Technical Details
+
+### Tiered timeout map (edge function)
+
+```text
+const PLATFORM_TIMEOUTS: Record<string, number> = {
+  reddit: 600_000,
+  facebook_groups_public: 600_000,
+  youtube_comments: 600_000,
+  patient_communities: 600_000,
+  discourse_forums: 600_000,
+  // All others default to 300_000
+  twitter_x: 180_000,
+  producthunt: 180_000,
+  quora: 180_000,
+  alternativeto: 180_000,
+  trustpilot: 180_000,
+  bbb_complaints: 180_000,
+  indie_review_sites: 180_000,
+  tiktok_comments: 180_000,
+  indiehackers: 180_000,
+  discord_public: 180_000,
+  job_postings: 180_000,
+};
+const DEFAULT_TIMEOUT = 300_000;
+
+function getTimeout(platform: string): number {
+  return PLATFORM_TIMEOUTS[platform] ?? DEFAULT_TIMEOUT;
+}
+```
+
+### Incremental streaming pattern (edge function)
+
+```text
+let doneCount = 0;
+const totalTasks = tasks.length;
+
+const wrapperPromises = tasks.map(async (task) => {
+  send(sseEvent("source_update", { platform: task.platform, status: "searching", ... }));
+
+  const timeout = getTimeout(task.platform);
+  const result = await runTinyFishTask(task, apiKey, timeout, send);
+  // runTinyFishTask now calls send(logEvent(...)) for each PROGRESS event
+
+  if (result.success) {
+    send(logEvent(`${task.platform}: data received, filtering...`, "found"));
+    const filtered = await callGeminiJSON(filterPrompt, "flash", rawData);
+    doneCount++;
+    send(sseEvent("source_update", { platform: task.platform, status: "done", items_found }));
+    send(sseEvent("phase_update", { phase: "scraping", detail: `${doneCount} of ${totalTasks} complete` }));
+    return { platform: task.platform, data: filtered };
+  } else {
+    send(sseEvent("source_update", { platform: task.platform, status: "error" }));
+    doneCount++;
+    send(sseEvent("phase_update", { phase: "scraping", detail: `${doneCount} of ${totalTasks} complete` }));
+    return null;
+  }
+});
+
+await Promise.allSettled(wrapperPromises);
+send(sseEvent("phase_update", { phase: "synthesizing", detail: "Generating report..." }));
+```
+
+### runTinyFishTask signature change
+
+```text
+async function runTinyFishTask(
+  task: TinyFishTask,
+  apiKey: string,
+  timeoutMs: number,
+  send: (chunk: string) => void,
+): Promise<TinyFishResult>
+```
+
+Inside, on each `PROGRESS` event:
+```text
+if (event.type === "PROGRESS" && event.purpose) {
+  send(logEvent(`${task.platform}: ${event.purpose}`, "searching"));
+}
+```
+
+The `AbortController` timeout uses `timeoutMs` instead of the hardcoded 90s.
+
+### SearchingState layout (top to bottom)
+
+```text
+1. Phase banner: "STAGE 2 OF 3 -- SCRAPING PLATFORMS" + "~3-5 min"
+2. Query display: "Searching for: ..."
+3. Classification card (amber border): market/audience + routing rationale
+4. Log feed with pulse on latest entry
+5. Progress bar: "4 of 8 sources complete - 50%"
+6. Rotating tips during long waits
+```
 
