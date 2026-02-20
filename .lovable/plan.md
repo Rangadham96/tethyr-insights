@@ -1,123 +1,170 @@
 
 
-# Tethyr: Complete Production Build
+# Three-Stage Intelligence Pipeline — Final Implementation Plan
 
-## Pre-Build Notes Acknowledged
+## Overview
 
-Three observations noted and integrated:
-- **Index.tsx complexity**: Step 16 orchestrates 5 states, landing transition, lifted query state, and hook integration. Will rebuild in isolation if buggy.
-- **Mock SSE timing**: Currently 500ms to 8000ms (7.5s window). Will stretch to 12 seconds if demo feels rushed -- one-line change in api.ts.
-- **Mobile transition testing**: Landing-to-searching transition on mobile is the highest-risk visual glitch point. Will test immediately after build.
+Build the complete product pipeline as a single Lovable Cloud backend function. Gemini classifies the query into TinyFish tasks, TinyFish scrapes in parallel, Gemini filters and synthesizes into a structured report. The frontend connects via SSE for real-time progress.
 
-## Implementation Order (17 Steps)
+## Prerequisites
 
-### Step 1: Environment Files
-- `.env.example` with `VITE_API_URL=https://your-railway-app.railway.app`
-- `.env.local` with `VITE_API_URL=http://localhost:3001`
+- Store your **TinyFish API key** as a secret (`TINYFISH_API_KEY`)
 
-### Step 2: TypeScript Types (`src/types/report.ts`)
-All interfaces matching the backend contract:
-- `UserTier` -- `"free" | "founder" | "team" | "studio"`
-- `AppState` -- `"landing" | "idle" | "searching" | "complete" | "error"`
-- `SubmitReportRequest` -- `{ query, intents, sessionId, tier }`
-- `SubmitReportResponse` -- `{ reportId, status }`
-- `SourceUpdateEvent` -- `{ platform, status, items_found, message }`
-- `LogEvent` -- `{ text, type }`
-- `SelectedSource` -- `{ platform, display_name, selection_reason, priority }`
-- `ClassificationEvent` -- `{ market_type, audience_type, problem_maturity, routing_rationale, sources_selected, sources_skipped }`
-- `Verdict` -- `"CONFIRMED" | "PARTIAL" | "UNCLEAR" | "INVALIDATED"`
-- `ReportData` -- full report_complete payload including `meta.sources_used`
-- `SourceInfo` -- runtime source tracking with `selection_reason` field
+## TinyFish API Contract (from official docs)
 
-### Step 3: Source Registry (`src/constants/sources.ts`)
-`SOURCE_REGISTRY`: typed record of 29 platforms keyed by platform string. Each entry: `display_name`, `category`, `description`. Categories: discussion, app_stores, reviews, social, forums, research, jobs, ecommerce. All UI source rendering resolves through this registry.
+Based on the full documentation review:
 
-### Step 4: API Service (`src/services/api.ts`)
-- Reads `import.meta.env.VITE_API_URL`, exports `API_BASE_URL`
-- `submitReport(query, intents, tier)` -- POST to `/api/report`
-- `createReportStream(reportId)` -- EventSource for SSE
-- Mock mode simulating full lifecycle over ~10 seconds:
-  - t=300ms: returns reportId
-  - t=500ms: fires `classification_complete` (health/wellness mock)
-  - t=1000ms-8000ms: staggered source updates + log lines
-  - t=9000ms: fires `report_complete` with full mock data
+```text
+POST https://agent.tinyfish.ai/v1/automation/run-sse
+Headers:
+  X-API-Key: <TINYFISH_API_KEY>
+  Content-Type: application/json
+Body:
+  {
+    "url": "https://example.com",         (required)
+    "goal": "plain English instruction",   (required)
+    "browser_profile": "stealth",          (optional: "lite" or "stealth")
+    "proxy_config": {                      (optional)
+      "enabled": true,
+      "country_code": "US"
+    }
+  }
+```
 
-### Step 5: SSE Utilities (`src/services/sse.ts`)
-Type-safe event parser handling `source_update`, `log`, `classification_complete`, `report_complete`.
+**SSE response events from TinyFish:**
+- `STARTED` — `{ type: "STARTED", runId, timestamp }`
+- `STREAMING_URL` — optional, live browser view URL
+- `PROGRESS` — `{ type: "PROGRESS", runId, purpose, timestamp }` (intermediate steps like "Clicking submit button")
+- `HEARTBEAT` — keep-alive messages
+- `COMPLETE` — `{ type: "COMPLETE", runId, status: "COMPLETED", resultJson: {...}, timestamp }`
 
-### Step 6: useReport Hook (`src/hooks/useReport.ts`)
-Manages: `appState` (default "landing"), `sources[]`, `logLines[]`, `reportData`, `userTier`, `classification`, `skippedSources`. Handles `classification_complete` by replacing source list with selected sources. Cleanup on unmount.
+The scraped data we need lives in `resultJson` inside the `COMPLETE` event.
 
-### Step 7: CopyButton (`src/components/CopyButton.tsx`)
-Hover-triggered "Copy" in Geist Mono 8px. Copies text + attribution via native clipboard API. Shows "Copied" for 1.5s. No toast, no library.
+**Implementation detail:** We will use `browser_profile: "stealth"` by default since we're scraping real sites (Reddit, App Store, YouTube, etc.) that may have bot detection.
 
-### Step 8: TierGate (`src/components/TierGate.tsx`)
-Wraps locked sections. Tier hierarchy check. If insufficient: CSS blur (6px), pointer-events disabled, lock icon, description, amber "Start free trial" CTA. Newspaper aesthetic.
+## Architecture
 
-### Step 9: SearchInput (`src/components/SearchInput.tsx`)
-Shared component with `variant: "landing" | "panel"`. Six layers:
-1. Intent tabs (5 tabs, hide on typing)
-2. Textarea with expanding focus state and amber hint bar
-3. Character quality indicator (red below 80, green 80-200, green "Detailed" above 200)
-4. Contextual nudge (20-79 chars, content-aware suggestions)
-5. Tips panel (toggle, 2x2 grid of tip cards with clickable examples)
-6. Contextual examples (3 per intent tab, 15 total, click-to-fill)
+```text
+Frontend (POST { query, intents })
+    |
+    v
+Backend Function: generate-report (SSE response stream)
+    |
+    |-- Stage 1: Gemini 2.5 Pro (Prompt 1)
+    |   - Classifies query (market type, audience, maturity, intent)
+    |   - Produces 6-10 TinyFish tasks with exact URLs + goals
+    |   - Streams: classification_complete, log events
+    |
+    |-- Stage 2: TinyFish (parallel) + Gemini 2.5 Flash (Prompt 2)
+    |   - For each task:
+    |     - POST to agent.tinyfish.ai/v1/automation/run-sse
+    |       with { url, goal, browser_profile: "stealth" }
+    |     - Read SSE stream, collect PROGRESS events as log lines
+    |     - Extract resultJson from COMPLETE event
+    |     - Run Gemini Flash (Prompt 2) to quality-filter raw data
+    |     - Stream: source_update (searching -> done), log events
+    |   - All tasks run in parallel
+    |
+    |-- Stage 3: Gemini 2.5 Pro (Prompt 3)
+    |   - Receives all filtered data from all platforms
+    |   - Produces final structured report JSON
+    |   - Backend normalizes to match frontend ReportData interface
+    |   - Streams: report_complete event
+    |
+    |-- Save completed report to database
+```
 
-### Step 10: EmptyState (`src/components/EmptyState.tsx`)
-Right panel for idle state. Playfair headline, Crimson paragraph, 3 clickable example queries with red-on-hover borders.
+## What Gets Built
 
-### Step 11: SearchingState (`src/components/SearchingState.tsx`)
-Classification card at top (amber border, market type + routing rationale). Live log feed below with section-in animations. Lines styled by type. Progress summary.
+### 1. Secret: TINYFISH_API_KEY
 
-### Step 12: LandingPage (`src/components/LandingPage.tsx`)
-Full scrolling page, 8 sections with IntersectionObserver fade-up animations:
-1. **Hero**: Sticky nav with blur, "TRUTH" background text, headline, SearchInput (variant="landing")
-2. **The Problem**: Two columns, three stat blocks in red Playfair
-3. **How It Works**: Dark section (bg-ink), four horizontal steps with amber labels
-4. **Sources**: Accordion of 6 categories from SOURCE_REGISTRY, dynamic selection note
-5. **What Makes Tethyr Different**: 3x2 claim cards
-6. **What's In Your Report**: 2-column section cards with tier badges
-7. **Pricing**: 4-column grid, Founder card dark
-8. **Final CTA**: Second SearchInput instance, "honest answer" headline
+You will be prompted to securely store your TinyFish API key.
 
-Footer with logo and copyright.
+### 2. Backend Function: `generate-report`
 
-### Step 13: ReportPanel Refactor (`src/components/ReportPanel.tsx`)
-- Data-driven from `reportData` prop
-- Four verdict states: CONFIRMED (green), PARTIAL (amber), UNCLEAR (red), INVALIDATED (red) with specific copy
-- Report header renders `meta.sources_used` names via SOURCE_REGISTRY
-- CopyButton on every quote (section 01) and phrase (section 04)
-- Sections 04 and 05 wrapped in TierGate (requiredTier="founder")
+Single file: `supabase/functions/generate-report/index.ts`
 
-### Step 14: LeftPanel Refactor (`src/components/LeftPanel.tsx`)
-- Uses SearchInput (variant="panel") instead of inline textarea
-- Sources driven by classification_complete + source_update SSE events
-- Each source row: display name, selection reason in italic Crimson Pro, status badge, count
-- Collapsed "Not searched" section showing skipped sources with reasons
-- Dynamic progress bar
+**Request:** POST with `{ query, intents }`
+**Response:** SSE stream with events matching frontend expectations
 
-### Step 15: Ticker Refactor (`src/components/Ticker.tsx`)
-- Landing: static branding
-- Idle: generic platform names
-- Searching: short platform statuses only ("Reddit: 34 threads found")
-- Complete: summary stats
+Contains:
+- **3 prompt functions** stored separately, exactly as you provided — no modifications
+  - `buildClassificationPrompt(query, intents)` — your Prompt 1 verbatim
+  - `buildQualityFilterPrompt(platform, itemCount, query)` — your Prompt 2 verbatim
+  - `buildSynthesisPrompt(platformCount, totalItems, query, intents)` — your Prompt 3 verbatim
 
-### Step 16: Index.tsx Refactor (`src/pages/Index.tsx`)
-Five-state orchestration:
-- `landing`: renders LandingPage full screen
-- `idle`: split panel with EmptyState
-- `searching`: split panel with SearchingState
-- `complete`: split panel with ReportPanel
-- `error`: split panel with retry
+- **TinyFish client** using:
+  - `POST https://agent.tinyfish.ai/v1/automation/run-sse`
+  - Header: `X-API-Key` from secret
+  - Body: `{ url, goal, browser_profile: "stealth" }`
+  - Reads SSE stream, forwards `PROGRESS` events as log lines to frontend
+  - Extracts `resultJson` from `COMPLETE` event as raw scraped data
 
-Landing-to-searching: 300ms fade out, 300ms fade in. Query preserved. No back button.
+- **Schema normalizer** that maps Gemini Prompt 3 output to frontend `ReportData` interface:
+  - `problem_validation.evidence` mapped to `problem_validation.quotes`
+  - flat `feature_gaps` array mapped to `{ gaps: [...] }`
+  - flat `competitor_weaknesses` array mapped to `{ competitors: [...] }`
+  - flat `audience_language` array mapped to `{ phrases: [...] }`
+  - flat `build_recommendations` array mapped to `{ recommendations: [...] }`
 
-### Step 17: Tailwind Config
-Add scroll arrow bounce animation. Nothing else changes.
+- **Error handling:**
+  - TinyFish task fails: platform marked `status: "error"`, excluded from Stage 3
+  - Gemini returns invalid JSON: retry once, then fail gracefully
+  - All platforms fail: stream error event to frontend
 
-## Risk Mitigation
-- Index.tsx (step 16) is the highest complexity file -- will rebuild in isolation if needed
-- Mock SSE timing adjustable to 12s if demo feels rushed
-- Mobile landing-to-searching transition tested immediately after build
-- All CSS variables, keyframes, design tokens remain untouched
+### 3. Frontend API Update
+
+**`src/services/api.ts`:**
+- `submitReport()` now constructs the full backend function URL and opens a fetch-based SSE connection
+- Reads the SSE stream and dispatches events to `useReport` handlers
+- Mock mode remains as fallback (when no `TINYFISH_API_KEY` is configured, or for local dev)
+
+**`src/hooks/useReport.ts`:**
+- Minor update to call the new streaming API
+- Event handling stays the same — event names (`classification_complete`, `source_update`, `log`, `report_complete`) are unchanged
+
+### 4. Database Persistence
+
+On `report_complete`, the backend function saves to the `reports` table:
+- `query`, `status: "complete"`, full report JSON in `report_data`
+- Classification metadata
+
+## SSE Event Timeline (what the frontend receives)
+
+```text
+1. log: "Classifying query and selecting optimal sources..."
+2. classification_complete: { market_type, sources_selected, sources_skipped, ... }
+3. log: "Dispatching 8 TinyFish agents in stealth mode..."
+4. source_update: { platform: "reddit", status: "searching" }
+5. log: "Reddit: Navigating to r/mentalhealth..."         (from TinyFish PROGRESS)
+6. source_update: { platform: "reddit", status: "done", items_found: 34 }
+7. (repeat for each platform, arriving as they complete)
+8. log: "All sources collected. Synthesizing report..."
+9. report_complete: { full ReportData JSON }
+```
+
+## Model Selection
+
+| Stage | Model | Reason |
+|-------|-------|--------|
+| 1 (Classification) | google/gemini-2.5-pro | Complex routing logic with 30+ source rules |
+| 2 (Quality Filter) | google/gemini-2.5-flash | Runs per-platform, needs speed. Simple filter task. |
+| 3 (Synthesis) | google/gemini-2.5-pro | Final report requires deep reasoning across all data |
+
+## Implementation Order
+
+1. Prompt you to add TinyFish API key as a secret
+2. Create `supabase/functions/generate-report/index.ts` with all 3 stages, 3 prompts verbatim, TinyFish client with exact API format
+3. Update `src/services/api.ts` to call the backend function with SSE streaming
+4. Update `src/hooks/useReport.ts` to use the new flow
+5. Deploy and test end-to-end
+
+## Files Changed
+
+| File | Action |
+|------|--------|
+| `supabase/functions/generate-report/index.ts` | Create |
+| `src/services/api.ts` | Update |
+| `src/hooks/useReport.ts` | Update |
+| `src/types/report.ts` | Minor updates if needed |
 
