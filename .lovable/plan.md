@@ -1,52 +1,50 @@
 
 
-# Implement Auth: Route Protection, Trigger, and Sign-Out
+## Plan: Fix Refresh Persistence and Expand Source Coverage to 15
 
-## What's Already Done
-- Auth page (`/auth`) with login/signup form -- fully styled
-- `useAuth` hook with `signIn`, `signUp`, `signOut`, session tracking
-- Route at `/auth` in App.tsx
-- `handle_new_user()` database function exists (creates profile + team)
+### Issue 1: Page Refresh Loses Report Data
 
-## What's Missing
+**Root cause**: The persistence layer uses `sessionStorage` which works correctly, but the `Index.tsx` component has a logic gap. When the page reloads:
+- `useReport` correctly restores `appState: "complete"` from sessionStorage
+- But `Index.tsx` initializes `showSplit` based on `appState !== "landing"` -- this works
+- The actual bug is that `currentQuery` is captured via closure in `handleEvent`'s `useCallback` dependency. On `report_complete`, `persistState` uses `currentQuery` which may be stale (empty string) if the closure hasn't updated. This means the persisted `query` field is empty, so on reload `query` state starts as `""`, and the report renders but the context is lost.
 
-### 1. Database trigger not attached
-The `handle_new_user()` function exists but has no trigger connecting it to `auth.users`. New signups won't create profiles or teams, which will cause errors.
+**Additionally**, `sessionStorage` does NOT survive hard refreshes in all cases (it's cleared when the tab is closed). To make this more robust, we should use `localStorage` instead for completed reports.
 
-**Fix:** Create the trigger via migration:
-```sql
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
-```
+**Fix**:
+1. Switch from `sessionStorage` to `localStorage` in `useReport.ts`
+2. Fix the stale `currentQuery` closure bug by passing `query` directly into `persistState` from the `report_complete` handler rather than relying on the closure
+3. Add a TTL check (e.g., 24 hours) so old reports are auto-cleared
+4. Ensure `Index.tsx` properly initializes all UI state (query, showSplit, etc.) from the persisted state
 
-### 2. No route protection
-The Index page is accessible without login. Anyone can use the app without signing in.
+### Issue 2: Expand Source Selection from 6-10 to 10-15
 
-**Fix:** Create a `ProtectedRoute` component that checks auth state and redirects to `/auth` if not authenticated. Wrap the `/` route with it.
+**Root cause**: The classification prompt on line 519 explicitly instructs Gemini to "produce 6-10 search tasks." TinyFish can handle up to 15 concurrent tasks.
 
-### 3. No sign-out button
-Once logged in, there's no way to sign out.
+**Fix**:
+1. Update the classification prompt to request **10-15 sources** instead of 6-10
+2. Add a new instruction: when a high-signal platform (Reddit, G2, App Stores) covers multiple distinct angles, **split it into multiple focused tasks** rather than one broad task. For example:
+   - Reddit Task 1: "Search r/SaaS for complaints about [competitor]"
+   - Reddit Task 2: "Search r/startups for '[problem] solution' posts"
+   - Reddit Task 3: "Search r/[topic-specific] for feature requests"
+3. Update the JSON schema rules to allow multiple tasks per platform when the sub-targets are different (different subreddits, different search queries)
+4. Make goals hyper-specific: each task should name exact subreddits, exact search queries, exact filters, and exact field extractions
 
-**Fix:** Add a small sign-out button to the `LeftPanel` footer area (near the existing brand section), using the `signOut` function from `useAuth`.
+### Technical Details
 
-### 4. Auth page should redirect if already logged in
-If a user is already signed in and visits `/auth`, they should be redirected to `/`.
+**Files to modify:**
 
-## Files to Change
+**`src/hooks/useReport.ts`**
+- Change `sessionStorage` to `localStorage` for the `SESSION_KEY`
+- Fix `persistState` call in `report_complete` to capture query from the event handler's own state rather than the stale closure
+- Add 24-hour TTL check in `loadPersistedState()`
 
-| File | Change |
-|------|--------|
-| Migration SQL | Attach `handle_new_user` trigger to `auth.users` |
-| `src/components/ProtectedRoute.tsx` | New component -- checks auth, redirects to `/auth` |
-| `src/App.tsx` | Wrap `/` route with `ProtectedRoute` |
-| `src/pages/Auth.tsx` | Redirect to `/` if already authenticated |
-| `src/components/LeftPanel.tsx` | Add sign-out button in footer |
+**`src/pages/Index.tsx`**
+- Ensure `showSplit` initializes to `true` when persisted state has a completed report (already partially done, but verify)
 
-## Technical Details
+**`supabase/functions/generate-report/index.ts`**
+- Line 519: Change "6-10 search tasks" to "10-15 search tasks"
+- Update task rules to explicitly encourage splitting high-signal platforms into multiple focused sub-tasks with different targets
+- Add guidance like: "If Reddit is selected, create 2-3 separate Reddit tasks targeting different subreddits with different search queries. If G2 is selected, create one task for competitor A reviews and another for competitor B reviews."
+- Update the "no duplicating platforms" rule to "no duplicating exact targets -- multiple tasks for the same platform are encouraged if they target different pages, subreddits, or search queries"
 
-**ProtectedRoute** will use `useAuth()` to check `loading` and `isAuthenticated`. While loading, show a simple centered spinner. If not authenticated, redirect to `/auth` via `<Navigate>`.
-
-**Auth page redirect** will use `useAuth()` and `useNavigate()` in a `useEffect` to redirect authenticated users away from the login page.
-
-**Sign-out button** will be a small text link in the LeftPanel footer styled consistently with the existing design (mono uppercase, subtle).
