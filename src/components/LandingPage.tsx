@@ -61,22 +61,22 @@ const REPORT_SECTIONS = [
 
 const PRICING = [
   {
-    name: "Free", price: "$0", period: "forever · no card needed", dark: false,
+    name: "Free", price: "$0", period: "forever · no card needed", featured: false,
     features: ["One complete report", "All 3 free sections unlocked", "Source links included", "No account required"],
     cta: "Run free report →",
   },
   {
-    name: "Founder", price: "$29", period: "per month", dark: true,
+    name: "Founder", price: "$29", period: "per month", featured: true,
     features: ["Unlimited reports", "All 5 sections unlocked", "Report history saved", "PDF export", "Priority source coverage"],
     cta: "Start founder plan →",
   },
   {
-    name: "Team", price: "$99", period: "per month", dark: false,
+    name: "Team", price: "$99", period: "per month", featured: false,
     features: ["Everything in Founder", "Daily morning digest", "Up to 5 seats", "Slack integration", "Workspace dashboard"],
     cta: "Start team plan →",
   },
   {
-    name: "Studio", price: "$299", period: "per month", dark: false,
+    name: "Studio", price: "$299", period: "per month", featured: false,
     features: ["Everything in Team", "Unlimited seats", "Custom source config", "White-label PDF reports", "API access"],
     cta: "Contact us →",
   },
@@ -399,31 +399,31 @@ const LandingPage = ({ onRunReport, isSearching, appState }: LandingPageProps) =
               <div
                 key={plan.name}
                 className={`px-4 md:px-6 py-5 md:py-7 ${i % 2 === 0 ? "border-r border-ink/[0.22]" : ""} ${i < 2 ? "border-b md:border-b-0 border-ink/[0.22]" : ""} ${i < 3 ? "md:border-r border-ink/[0.22]" : ""} ${
-                  plan.dark ? "bg-ink" : ""
+                  (plan as any).featured ? "bg-paper-darker" : ""
                 }`}
               >
-                <div className={`font-mono text-[8px] md:text-[9px] tracking-[0.14em] uppercase mb-3 md:mb-4 ${plan.dark ? "text-paper/40" : "text-ink-4"}`}>
+                <div className="font-mono text-[8px] md:text-[9px] tracking-[0.14em] uppercase mb-3 md:mb-4 text-ink-4">
                   {plan.name}
                 </div>
-                <div className={`font-display text-[24px] md:text-[36px] font-bold leading-none mb-1 ${plan.dark ? "text-paper/95" : "text-ink"}`}>
+                <div className="font-display text-[24px] md:text-[36px] font-bold leading-none mb-1 text-ink">
                   {plan.price}
                 </div>
-                <div className={`font-mono text-[7px] md:text-[9px] tracking-[0.06em] mb-4 md:mb-5 ${plan.dark ? "text-paper/35" : "text-ink-4"}`}>
+                <div className="font-mono text-[7px] md:text-[9px] tracking-[0.06em] mb-4 md:mb-5 text-ink-4">
                   {plan.period}
                 </div>
-                <div className={`h-px mb-4 md:mb-5 ${plan.dark ? "bg-paper/10" : "bg-ink/10"}`} />
+                <div className="h-px mb-4 md:mb-5 bg-ink/10" />
                 <div className="flex flex-col gap-1.5 md:gap-2 mb-4 md:mb-6">
                   {plan.features.map((f, j) => (
-                    <div key={j} className={`font-body text-[11px] md:text-[13.5px] leading-[1.4] flex items-start gap-1.5 md:gap-2 ${plan.dark ? "text-paper/60" : "text-ink-3"}`}>
-                      <span className={`font-mono text-[9px] md:text-[10px] flex-shrink-0 mt-[1px] md:mt-[2px] ${plan.dark ? "text-amber/70" : "text-red-soft"}`}>→</span>
+                    <div key={j} className="font-body text-[11px] md:text-[13.5px] leading-[1.4] flex items-start gap-1.5 md:gap-2 text-ink-3">
+                      <span className="font-mono text-[9px] md:text-[10px] flex-shrink-0 mt-[1px] md:mt-[2px] text-red-soft">→</span>
                       {f}
                     </div>
                   ))}
                 </div>
                 <button
                   className={`w-full py-2 md:py-2.5 rounded-sm font-mono text-[8px] md:text-[9px] tracking-[0.12em] uppercase cursor-pointer transition-all ${
-                    plan.dark
-                      ? "bg-amber/[0.15] border border-amber/30 text-paper/80 hover:bg-amber/25"
+                    (plan as any).featured
+                      ? "bg-ink border border-ink text-paper hover:bg-ink/90"
                       : "bg-transparent border border-ink/[0.22] text-ink-3 hover:border-ink hover:text-ink"
                   }`}
                 >
