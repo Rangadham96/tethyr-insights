@@ -195,14 +195,14 @@ const LandingPage = ({ onRunReport, isSearching, appState }: LandingPageProps) =
         </div>
 
         {/* Scroll hint — fixed spacing to center in gap */}
-        <div className="py-[40px] md:py-[60px] flex flex-col items-center gap-1.5 opacity-50 animate-scroll-bounce">
+        <div className="py-[24px] md:py-[36px] flex flex-col items-center gap-1.5 opacity-50 animate-scroll-bounce">
           <span className="font-mono text-[8px] tracking-[0.14em] uppercase text-ink-4">Scroll to learn more</span>
           <div className="w-px h-4 md:h-6 bg-ink-4" />
         </div>
       </section>
 
       {/* Section 2: The Problem */}
-      <section ref={s2.ref} className={`py-[60px] md:py-[100px] px-5 md:px-12 max-w-[1100px] mx-auto relative z-[1] ${s2.className}`}>
+      <section ref={s2.ref} className={`pt-[36px] pb-[60px] md:pt-[48px] md:pb-[100px] px-5 md:px-12 max-w-[1100px] mx-auto relative z-[1] ${s2.className}`}>
         <SectionRule num="01" title="The Problem" />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-[60px] items-start">
           <div>
