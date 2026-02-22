@@ -12,7 +12,8 @@ import { startLiveStream } from "@/services/api";
 import { SOURCE_REGISTRY } from "@/constants/sources";
 import { supabase } from "@/integrations/supabase/client";
 
-const SESSION_KEY = "tethyr_report_state";
+const STORAGE_KEY = "tethyr_report_state";
+const TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 interface PersistedState {
   appState: AppState;
@@ -28,11 +29,17 @@ interface PersistedState {
 
 function loadPersistedState(): PersistedState | null {
   try {
-    const raw = sessionStorage.getItem(SESSION_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedState;
-    // Only restore completed reports (not stale searching states)
-    if (parsed.appState === "complete" && parsed.reportData) return parsed;
+    // Only restore completed reports within TTL
+    if (parsed.appState === "complete" && parsed.reportData) {
+      if (Date.now() - parsed.timestamp > TTL_MS) {
+        localStorage.removeItem(STORAGE_KEY);
+        return null;
+      }
+      return parsed;
+    }
     return null;
   } catch {
     return null;
@@ -41,9 +48,9 @@ function loadPersistedState(): PersistedState | null {
 
 function persistState(state: PersistedState) {
   try {
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(state));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch {
-    // sessionStorage full or unavailable
+    // storage full or unavailable
   }
 }
 
@@ -99,26 +106,29 @@ export function useReport() {
         setLogLines((prev) => [...prev, log]);
         break;
       }
-      case "report_complete": {
+    case "report_complete": {
         const report = data as ReportData;
         setReportData(report);
         setAppState("complete");
-        // Persist to sessionStorage so it survives tab switches
+        // Persist to localStorage so it survives refreshes
         setSources((currentSources) => {
           setClassification((currentClassification) => {
             setCurrentPhase((currentPhaseVal) => {
               setSkippedSources((currentSkipped) => {
                 setLogLines((currentLogs) => {
-                  persistState({
-                    appState: "complete",
-                    sources: currentSources,
-                    logLines: currentLogs,
-                    reportData: report,
-                    classification: currentClassification,
-                    currentPhase: currentPhaseVal,
-                    skippedSources: currentSkipped,
-                    query: currentQuery,
-                    timestamp: Date.now(),
+                  setCurrentQuery((currentQ) => {
+                    persistState({
+                      appState: "complete",
+                      sources: currentSources,
+                      logLines: currentLogs,
+                      reportData: report,
+                      classification: currentClassification,
+                      currentPhase: currentPhaseVal,
+                      skippedSources: currentSkipped,
+                      query: currentQ,
+                      timestamp: Date.now(),
+                    });
+                    return currentQ;
                   });
                   return currentLogs;
                 });
@@ -144,14 +154,14 @@ export function useReport() {
         break;
       }
     }
-  }, [currentQuery]);
+  }, []);
 
   const runReport = useCallback(
     async (query: string, intents: string[]) => {
       // Reset state
       setAppState("searching");
       setCurrentQuery(query);
-      sessionStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem(STORAGE_KEY);
       setSources([]);
       setLogLines([]);
       setReportData(null);
@@ -178,7 +188,7 @@ export function useReport() {
   const reset = useCallback(() => {
     cleanupRef.current?.();
     cleanupRef.current = null;
-    sessionStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(STORAGE_KEY);
     setAppState("idle");
     setSources([]);
     setLogLines([]);
