@@ -23,7 +23,9 @@ const Index = () => {
     skippedSources,
     errorMessage,
     currentQuery: persistedQuery,
+    isStale,
     runReport,
+    retry,
     reset,
   } = useReport();
 
@@ -128,6 +130,9 @@ const Index = () => {
                   sourcesTotal={sources.length}
                   sourcesDone={doneCount}
                   currentPhase={currentPhase}
+                  isStale={isStale}
+                  onRetry={retry}
+                  onReset={handleNewReport}
                 />
               )}
               {appState === "complete" && reportData && (
@@ -199,6 +204,9 @@ const Index = () => {
               sourcesTotal={sources.length}
               sourcesDone={doneCount}
               currentPhase={currentPhase}
+              isStale={isStale}
+              onRetry={retry}
+              onReset={handleNewReport}
             />
           )}
 

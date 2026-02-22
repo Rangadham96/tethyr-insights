@@ -17,6 +17,9 @@ interface SearchingStateProps {
   sourcesTotal: number;
   sourcesDone: number;
   currentPhase?: PhaseEvent | null;
+  isStale?: boolean;
+  onRetry?: () => void;
+  onReset?: () => void;
 }
 
 const SearchingState = ({
@@ -26,13 +29,24 @@ const SearchingState = ({
   sourcesTotal,
   sourcesDone,
   currentPhase,
+  isStale,
+  onRetry,
+  onReset,
 }: SearchingStateProps) => {
   const [tipIndex, setTipIndex] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   useEffect(() => {
     const interval = setInterval(() => {
       setTipIndex((prev) => (prev + 1) % TIPS.length);
     }, 8000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setElapsedSeconds((prev) => prev + 1);
+    }, 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -51,16 +65,52 @@ const SearchingState = ({
   };
 
   const { stage, estimate } = getPhaseLabel();
+  const showSlowWarning = elapsedSeconds > 120 && !isStale;
 
   return (
     <div className="flex flex-col h-full overflow-y-auto px-10 py-8" style={{ scrollbarWidth: "thin" }}>
+      {/* Stale connection banner */}
+      {isStale && (
+        <div
+          className="flex items-center justify-between mb-5 p-4 border border-red/20 bg-red/[0.04] rounded-sm"
+          style={{ animation: "section-in 0.4s ease forwards" }}
+        >
+          <div>
+            <div className="font-mono text-[9px] tracking-[0.14em] uppercase text-red mb-1">
+              Connection Lost
+            </div>
+            <p className="font-body text-[13px] text-ink-3 font-light">
+              No updates received for 90 seconds. The connection may have dropped.
+            </p>
+          </div>
+          <div className="flex gap-2 ml-4 flex-shrink-0">
+            {onRetry && (
+              <button
+                onClick={onRetry}
+                className="bg-ink text-paper px-4 py-2 font-mono text-[9px] tracking-[0.14em] uppercase border-none cursor-pointer hover:bg-red transition-colors"
+              >
+                Retry →
+              </button>
+            )}
+            {onReset && (
+              <button
+                onClick={onReset}
+                className="bg-transparent text-ink-3 px-4 py-2 font-mono text-[9px] tracking-[0.14em] uppercase border border-ink/20 cursor-pointer hover:text-ink transition-colors"
+              >
+                Start Fresh
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Phase banner */}
       <div
         className="flex items-center justify-between mb-5 pb-3 border-b border-ink/10"
         style={{ animation: "section-in 0.4s ease forwards" }}
       >
         <div className="flex items-center gap-2.5">
-          <span className="w-[6px] h-[6px] rounded-full bg-red-soft animate-pulse-dot flex-shrink-0" />
+          <span className={`w-[6px] h-[6px] rounded-full flex-shrink-0 ${isStale ? "bg-ink-4" : "bg-red-soft animate-pulse-dot"}`} />
           <span className="font-mono text-[9px] tracking-[0.14em] uppercase text-ink-3">
             {stage}
           </span>
@@ -154,8 +204,25 @@ const SearchingState = ({
         </div>
       )}
 
+      {/* Slow warning */}
+      {showSlowWarning && (
+        <div className="mt-4 pt-3 border-t border-ink/10">
+          <p className="font-body text-[12px] text-ink-4 font-light leading-[1.5]">
+            ⏳ Taking longer than expected ({Math.floor(elapsedSeconds / 60)}m {elapsedSeconds % 60}s elapsed). Some sources may be slow to respond.
+          </p>
+          {onReset && (
+            <button
+              onClick={onReset}
+              className="mt-2 bg-transparent text-ink-3 px-3 py-1.5 font-mono text-[9px] tracking-[0.14em] uppercase border border-ink/20 cursor-pointer hover:text-ink transition-colors"
+            >
+              Start Fresh
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Rotating tips */}
-      {currentPhase?.phase === "scraping" && (
+      {currentPhase?.phase === "scraping" && !isStale && (
         <div className="mt-4 pt-3">
           <p
             key={tipIndex}

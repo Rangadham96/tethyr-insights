@@ -69,10 +69,14 @@ export function useReport() {
   >(persisted.current?.skippedSources ?? []);
   const [errorMessage, setErrorMessage] = useState("");
   const [currentQuery, setCurrentQuery] = useState(persisted.current?.query ?? "");
+  const lastEventTimeRef = useRef<number>(Date.now());
+  const [isStale, setIsStale] = useState(false);
 
   const cleanupRef = useRef<(() => void) | null>(null);
 
   const handleEvent = useCallback((eventType: string, data: unknown) => {
+    lastEventTimeRef.current = Date.now();
+    setIsStale(false);
     switch (eventType) {
       case "classification_complete": {
         const classData = data as ClassificationEvent;
@@ -161,6 +165,8 @@ export function useReport() {
       // Reset state
       setAppState("searching");
       setCurrentQuery(query);
+      setIsStale(false);
+      lastEventTimeRef.current = Date.now();
       localStorage.removeItem(STORAGE_KEY);
       setSources([]);
       setLogLines([]);
@@ -185,6 +191,12 @@ export function useReport() {
     [userTier, handleEvent],
   );
 
+  const retry = useCallback(() => {
+    if (currentQuery) {
+      runReport(currentQuery, []);
+    }
+  }, [currentQuery, runReport]);
+
   const reset = useCallback(() => {
     cleanupRef.current?.();
     cleanupRef.current = null;
@@ -198,11 +210,27 @@ export function useReport() {
     setSkippedSources([]);
     setErrorMessage("");
     setCurrentQuery("");
+    setIsStale(false);
   }, []);
 
   const goToIdle = useCallback(() => {
     setAppState("idle");
   }, []);
+
+  // Stale connection detection: check every 30s if no event received for 90s
+  useEffect(() => {
+    if (appState !== "searching") {
+      setIsStale(false);
+      return;
+    }
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - lastEventTimeRef.current;
+      if (elapsed > 90_000) {
+        setIsStale(true);
+      }
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [appState]);
 
   useEffect(() => {
     return () => {
@@ -222,7 +250,9 @@ export function useReport() {
     skippedSources,
     errorMessage,
     currentQuery,
+    isStale,
     runReport,
+    retry,
     reset,
     goToIdle,
   };
