@@ -516,17 +516,26 @@ STEP 3 — GENERATE SEARCH TASKS
 
 
 
-Now produce 6-10 search tasks as a JSON array.
+Now produce 10-15 search tasks as a JSON array.
 
-
+TinyFish can handle up to 15 concurrent tasks — use this capacity wisely.
 
 
 Rules that cannot be broken:
 - Every task references a specific URL, subreddit, 
   search query, or named competitor — never vague
 - Every extract instruction names exact fields to return
-- Each task targets a different source — 
-  no duplicating platforms
+- SPLITTING IS ENCOURAGED: For high-signal platforms 
+  (Reddit, G2, App Stores, Amazon), create MULTIPLE 
+  tasks targeting different angles. Examples:
+  - Reddit: separate tasks for different subreddits 
+    (r/SaaS, r/startups, r/[topic-specific])
+  - G2/Capterra: separate tasks for different competitors
+  - App Stores: separate tasks for competitor A vs B
+  - Amazon: separate tasks for different product categories
+- No duplicating exact targets — multiple tasks for 
+  the same platform ARE allowed if they target 
+  different pages, subreddits, or search queries
 - Tasks are ordered by expected signal strength 
   for this specific query — highest first
 - If a platform has no relevant subreddit or 
@@ -534,6 +543,9 @@ Rules that cannot be broken:
   explain why in routing_skipped
 - Never include a source just because it is popular — 
   only include it if routing logic justifies it
+- Make each task's goal hyper-specific: name exact 
+  subreddits, exact search queries, exact filters, 
+  and exact field extractions
 
 
 
