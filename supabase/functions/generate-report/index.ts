@@ -114,7 +114,7 @@ STEP 2 — SELECT SOURCES USING THIS ROUTING LOGIC
 
 
 
-Using your classification above, select 6-10 sources from the 
+Using your classification above, select 10-15 sources from the 
 master list below. Every source selection must have a reason. 
 Do not default to the same sources for every query.
 
@@ -547,6 +547,50 @@ Rules that cannot be broken:
   subreddits, exact search queries, exact filters, 
   and exact field extractions
 
+CRITICAL — WRITING EFFECTIVE GOALS FOR TINYFISH:
+
+TinyFish is a browser-automation agent. It navigates to a URL 
+and follows your "goal" as step-by-step browsing instructions. 
+Vague goals produce empty results. Here are examples:
+
+BAD GOAL (too vague, will return nothing):
+  "Search for project management complaints"
+
+GOOD GOAL (specific, actionable steps):
+  "Navigate to reddit.com/r/projectmanagement. Click the search 
+   bar and type 'frustrated OR hate OR switching from'. Sort 
+   results by 'Top' and filter to 'Past Year'. Open the first 
+   5 thread results. In each thread, extract the original post 
+   text, top 10 comments with 5+ upvotes, the commenter names, 
+   upvote counts, and post dates. Return all data as JSON."
+
+BAD GOAL:
+  "Find G2 reviews for Asana"
+
+GOOD GOAL:
+  "Navigate to g2.com/products/asana/reviews. Click 'Filter' and 
+   select 1-star and 2-star ratings only. Scroll down and extract 
+   the first 20 reviews. For each review extract: the 'What do 
+   you dislike?' section text, the reviewer's role/title, company 
+   size, star rating, and review date. Return as JSON array."
+
+BAD GOAL:
+  "Look at app store reviews"
+
+GOOD GOAL:
+  "Navigate to the page. Use the search bar to search for 'Calm 
+   app'. Click the first result. Scroll to the Ratings & Reviews 
+   section. Sort by 'Most Recent'. Extract 20 reviews that are 
+   1-star or 2-star. For each review get: full review text, star 
+   rating, date, and reviewer display name. Return as JSON."
+
+Every goal you write MUST include:
+1. Exact navigation steps (what to click, what to type)
+2. Exact filters to apply (star ratings, date range, sort order)
+3. Exact fields to extract (named explicitly)
+4. A quantity (how many items to collect)
+5. Output format instruction ("Return as JSON array")
+
 
 
 
@@ -951,27 +995,27 @@ function getFallback(
       return {
         platform: "google_play_store",
         label: "Google Play Store",
-        url_or_query: "https://play.google.com/store/search?q=" + encodeURIComponent(topic) + "&c=apps",
+        url_or_query: "https://play.google.com/store/apps",
         goalTemplate: (t) =>
-          `Go to the Google Play Store and search for '${t}'. Open the top result. Navigate to the Reviews section. Sort by Most Recent and filter by 1-star and 2-star ratings. Extract the 20 most recent negative reviews including review text, star rating, date, and reviewer name.`,
+          `Navigate to the Google Play Store. Use the search bar to search for '${t}'. Click the first app result. Scroll down to the Reviews section. Sort by 'Most recent' and look for 1-star and 2-star reviews. Extract 20 negative reviews including: full review text, star rating, date, and reviewer name. Return as JSON array.`,
       };
 
     case "youtube_comments":
       return {
         platform: "reddit",
         label: "Reddit video discussions",
-        url_or_query: `https://www.reddit.com/search/?q=${encodeURIComponent(topic + " review video")}&sort=relevance&t=year`,
+        url_or_query: "https://www.reddit.com",
         goalTemplate: (t) =>
-          `Go to Reddit and search for '${t} review video'. Open the top 5 threads. Extract the top 15 comments from each thread including comment text, upvote count, subreddit name, and relative date. Focus on comments discussing product experiences and opinions.`,
+          `Navigate to reddit.com. Use the search bar to search for '${t} review video'. Sort results by 'Relevance' and filter to 'Past Year'. Open the top 5 threads. In each thread, extract the top 15 comments including comment text, upvote count, subreddit name, and relative date. Return as JSON array.`,
       };
 
     case "tiktok_comments":
       return {
         platform: "quora",
         label: "Quora",
-        url_or_query: `https://www.quora.com/search?q=${encodeURIComponent(topic)}`,
+        url_or_query: "https://www.quora.com",
         goalTemplate: (t) =>
-          `Go to Quora and search for '${t}'. Open the top 5 questions. Extract the top 3 answers from each question including answer text, author name, upvote count, and date. Focus on personal experiences and opinions.`,
+          `Navigate to quora.com. Use the search bar to search for '${t}'. Open the top 5 question results. For each question, extract the top 3 answers including: answer text, author name, upvote count, and date. Return as JSON array.`,
       };
 
     case "facebook_groups_public": {
@@ -980,17 +1024,17 @@ function getFallback(
         return {
           platform: "patient_communities",
           label: "HealthUnlocked",
-          url_or_query: `https://healthunlocked.com/search/${encodeURIComponent(topic)}`,
+          url_or_query: "https://healthunlocked.com",
           goalTemplate: (t) =>
-            `Go to HealthUnlocked.com and search for '${t}'. Open the top 10 discussion threads. Extract the original post and top 5 replies from each thread including post text, author name, community name, and date.`,
+            `Navigate to healthunlocked.com. Use the search functionality to search for '${t}'. Open the top 10 discussion threads. For each thread extract: original post text, top 5 replies, author names, community name, and dates. Return as JSON array.`,
         };
       }
       return {
         platform: "reddit",
         label: "Reddit communities",
-        url_or_query: `https://www.reddit.com/search/?q=${encodeURIComponent(topic)}&sort=relevance&t=year`,
+        url_or_query: "https://www.reddit.com",
         goalTemplate: (t) =>
-          `Go to Reddit and search for '${t}'. Open the top 5 threads from relevant communities. Extract the top 15 comments from each thread including comment text, upvote count, subreddit name, and relative date.`,
+          `Navigate to reddit.com. Use the search bar to search for '${t}'. Sort by 'Relevance' and filter to 'Past Year'. Open the top 5 threads. In each thread, extract the top 15 comments including comment text, upvote count, subreddit name, and relative date. Return as JSON array.`,
       };
     }
 
@@ -1284,6 +1328,15 @@ serve(async (req: Request) => {
         }
       };
 
+      // Start SSE keepalive heartbeat every 15 seconds
+      const heartbeatInterval = setInterval(() => {
+        try {
+          controller.enqueue(encoder.encode(": keepalive\n\n"));
+        } catch {
+          // Stream closed
+        }
+      }, 15_000);
+
       try {
         // ═══ STAGE 1: CLASSIFICATION ═══
         send(sseEvent("phase_update", { phase: "classifying", detail: "Analyzing query..." }));
@@ -1501,6 +1554,7 @@ serve(async (req: Request) => {
         send(logEvent(`Error: ${msg}`, "error"));
         send(sseEvent("error", { message: msg }));
       } finally {
+        clearInterval(heartbeatInterval);
         controller.close();
       }
     },
