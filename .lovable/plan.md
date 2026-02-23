@@ -1,98 +1,165 @@
 
 
-## Plan: Make Reports Deliver in Under 8 Minutes -- Demo-Ready
+## Plan: Fix TinyFish Integration Based on Official Best Practices
 
-### The Core Problem
+### Research Findings -- What We're Doing Wrong
 
-Right now, the pipeline is broken because of three compounding failures:
+After studying the TinyFish docs, API reference, cookbook examples (competitor-analysis, logistics-sentry), and our edge function code, I found **5 critical issues**:
 
-1. **Individual TinyFish timeouts are absurdly long** (up to 600 seconds for Reddit). The edge function dies at 400s, so a single slow task kills everything.
-2. **No global deadline** -- `Promise.allSettled` waits for ALL tasks, including ones timing out at 10 minutes.
-3. **The SSE reader ignores keepalive comments** -- the frontend thinks the connection died after 90 seconds even when keepalives are flowing, triggering false "Connection Lost" UI.
-4. **Too many agents every time** -- the prompt forces 10-15 tasks regardless of query complexity. A simple query like "best CRM for small teams" doesn't need 15 agents.
+---
 
-### The Fix (4 Changes)
+### Issue 1: The Timeout is Broken (Most Critical Bug)
 
-**Change 1: Smart source count + simplified goals (Edge Function)**
+In `runTinyFishTask` at line 1094, we call `clearTimeout(timeout)` immediately after `fetch()` returns. But `fetch()` resolves when **HTTP headers arrive** -- NOT when the SSE stream finishes. The 120-second timeout protects only the initial connection, not the streaming phase. Once TinyFish starts streaming PROGRESS events, **our timeout has already been cleared** and the stream can run indefinitely (30+ minutes as you observed).
 
-Update the classification prompt to request "3-15 tasks depending on query complexity":
-- Simple/narrow queries: 3-5 tasks
-- Medium queries: 6-8 tasks  
-- Broad/multi-dimensional queries: 10-15 tasks
+**Fix**: Move `clearTimeout` to AFTER the stream reading loop completes.
 
-Simplify the goal examples to single-page, single-action instructions (2-3 sentences max). Remove the overly complex multi-step browsing scripts that cause TinyFish to hang.
+---
 
-**Change 2: Time-budgeted execution with hard cutoff (Edge Function)**
+### Issue 2: No Concurrency Limit
 
-- Cap ALL individual TinyFish task timeouts at **120 seconds** (2 minutes). If TinyFish can't get data in 2 minutes, it won't in 10.
-- Add a **5-minute (300s) global deadline** for the scraping phase. After 5 minutes, cancel all remaining tasks and proceed to synthesis with whatever data has been collected.
-- Add an **early exit**: if 60%+ of tasks are done and at least 2 sources returned data, don't wait for the rest.
-- This guarantees: ~30s classification + ~300s max scraping + ~60s synthesis = **under 7 minutes worst case**.
+TinyFish pricing:
+- Pay-as-you-go: **2 concurrent agents**
+- Standard ($15/mo): **4 concurrent agents**
+- Pro ($150/mo): **20 concurrent agents**
 
-**Change 3: Frontend handles keepalive + proper stale detection (SSE Reader + useReport)**
+We're launching all 8-12 tasks simultaneously with `tasks.forEach(async ...)`. If we're on Standard plan, TinyFish will queue/reject tasks beyond 4 concurrent, causing them to either hang waiting or fail.
 
-- Update `src/services/api.ts` to detect `: keepalive` SSE comments and fire a `keepalive` callback.
-- Update `useReport.ts` to handle `keepalive` events by resetting the stale timer without changing state.
-- Increase stale threshold from 90s to 150s (connection is only "lost" if no keepalive for 2.5 minutes).
-- Increase "Taking longer than expected" threshold from 120s to 300s.
+**Fix**: Add a concurrency limiter (e.g., run at most 4 agents in parallel).
 
-**Change 4: Retry actually retries, not resets (SearchingState)**
+---
 
-- The "Retry" button already calls `retry()` which is correctly wired. The problem is the stale detection fires too early (90s) due to keepalives being ignored (fixed in Change 3).
-- Clarify button labels: "Retry Same Query" vs "New Query".
+### Issue 3: Using "stealth" Mode for Everything
 
-### Technical Details
+The docs show two browser profiles:
+- `lite`: Standard browser -- faster, cheaper
+- `stealth`: Anti-detection browser -- for bot-protected sites
 
-**`supabase/functions/generate-report/index.ts`**
+We use `stealth` for everything, including Reddit and Hacker News which don't need it. Stealth mode is slower and costs more steps.
 
-Lines 519-548 (classification prompt): Change "10-15 search tasks" to "3-15 search tasks depending on query complexity" with guidance:
+**Fix**: Use `lite` for open sites (Reddit, HN, Quora, Stack Overflow), `stealth` only for protected sites (G2, Capterra, Amazon).
+
+---
+
+### Issue 4: No Proxy for Geo-restricted/Protected Sites
+
+The docs explicitly show proxy support for protected sites:
 ```
-Simple/focused query (e.g. "best CRM for plumbers"): 3-5 tasks
-Medium query (e.g. "project management tool gaps"): 6-8 tasks
-Broad research (e.g. "mental health app market"): 10-15 tasks
+proxy_config: { enabled: true, country_code: "US" }
 ```
 
-Lines 556-592 (goal examples): Replace verbose multi-step scripts with concise goals:
-```
-GOOD: "Search reddit.com/r/SaaS for 'CRM frustrations', sort by Top Past Year, extract titles and top 3 comments from first 5 posts. Return as JSON."
-BAD: "Navigate to reddit.com/r/SaaS. Click the search bar and type 'frustrated OR hate...' [paragraph continues]"
+G2 and Capterra are blocking us with Cloudflare. TinyFish has built-in residential proxies at $0/GB (included in every plan). We're not using them.
+
+**Fix**: Enable proxy for sites known to have Cloudflare protection.
+
+---
+
+### Issue 5: Goals Still Too Complex Despite Prompt Changes
+
+Looking at the TinyFish cookbook examples, their goals are ultra-simple:
+- "Extract the first 2 product names and prices"
+- "Find the pricing page and extract all plan details"
+- "Extract all products on this page. For each product return: name, price, and link"
+
+Our Gemini classifier still generates goals like "Search reddit.com/r/SaaS for 'CRM frustrations', sort by Top Past Year, extract titles and top 3 comments from first 5 posts." This has multiple steps (search, sort, extract from multiple posts). TinyFish works best with **one page, one extraction**.
+
+**Fix**: Pre-build the URL with search/filter parameters so TinyFish lands directly on the results page. Make the goal purely about extraction, not navigation.
+
+---
+
+### The Fix (5 Changes, 1 File)
+
+All changes are in `supabase/functions/generate-report/index.ts`:
+
+**Change 1: Fix the timeout bug**
+
+Move `clearTimeout(timeout)` from line 1094 (after fetch) to inside the `finally` block of the try/catch in `runTinyFishTask`. Also re-arm the abort signal for the streaming phase:
+
+```text
+Before:
+  const response = await fetch(..., { signal: controller.signal });
+  clearTimeout(timeout);  // BUG: cleared before stream is read
+  // ... reads stream for potentially 30+ minutes ...
+
+After:
+  const response = await fetch(..., { signal: controller.signal });
+  // DON'T clear timeout here -- let it protect the stream too
+  try {
+    // ... read stream ...
+  } finally {
+    clearTimeout(timeout);  // Only clear after stream is done
+  }
 ```
 
-Lines 1068-1092 (timeouts): Replace entire PLATFORM_TIMEOUTS map with a flat 120-second timeout:
-```typescript
-const TINYFISH_TIMEOUT_MS = 120_000; // 2 min max per task
-function getTimeout(_platform: string): number {
-  return TINYFISH_TIMEOUT_MS;
+**Change 2: Add concurrency limiter**
+
+Add a simple semaphore that limits parallel TinyFish calls to 4:
+
+```text
+async function runWithConcurrency<T>(
+  tasks: Array<() => Promise<T>>,
+  maxConcurrent: number
+): Promise<T[]> {
+  // Process tasks with at most maxConcurrent running at once
 }
 ```
 
-Lines 1386-1491 (scraping phase): Add global deadline and early-exit logic:
-- Create an AbortController for the entire scraping phase
-- Start a 300-second deadline timer
-- Track `doneCount` and `dataCount` (tasks that returned actual data)
-- After each task completes, check: if `doneCount >= totalTasks * 0.6 && dataCount >= 2`, resolve early
-- When deadline fires, abort all remaining tasks, log "Time budget reached", proceed to synthesis
+Use this in the scraping phase instead of `tasks.forEach(async ...)`.
 
-**`src/services/api.ts`**
+**Change 3: Smart browser profile selection**
 
-Lines 213-236 (SSE event parsing): Add keepalive detection before the event type/data parsing:
-```typescript
-// Inside the eventBlock processing loop:
-if (eventBlock.startsWith(":")) {
-  // SSE comment (keepalive)
-  callback("keepalive", {});
-  continue;
-}
+Add a map of which platforms need stealth vs lite:
+
+```text
+const STEALTH_PLATFORMS = new Set([
+  "g2", "capterra", "trustpilot", "glassdoor",
+  "amazon_reviews", "apple_app_store", "google_play_store"
+]);
+
+// In runTinyFishTask:
+browser_profile: STEALTH_PLATFORMS.has(task.platform) ? "stealth" : "lite"
 ```
 
-**`src/hooks/useReport.ts`**
+**Change 4: Enable proxy for protected sites**
 
-Line 78 (handleEvent): Add `case "keepalive"` that only updates `lastEventTimeRef.current = Date.now()` and returns.
+Add proxy config for stealth platforms:
 
-Lines 170-178 (stale detection): Change 90,000ms threshold to 150,000ms (2.5 minutes). Change check interval from 30s to 45s.
+```text
+const PROXY_PLATFORMS = new Set([
+  "g2", "capterra", "trustpilot", "glassdoor",
+  "amazon_reviews"
+]);
 
-**`src/components/SearchingState.tsx`**
+// In the fetch body:
+...(PROXY_PLATFORMS.has(task.platform) && {
+  proxy_config: { enabled: true, country_code: "US" }
+})
+```
 
-Line ~150 (showSlowWarning): Change threshold from `120` to `300` seconds.
+**Change 5: Restructure goals to be extraction-only**
 
-Update button labels: "Retry Same Query" and "New Query" instead of "Retry" and "Start Fresh".
+Update the classification prompt to emphasize:
+- The `url_or_query` field MUST be a fully-formed URL with search params already embedded (e.g., `https://www.reddit.com/r/SaaS/search/?q=CRM+frustrations&sort=top&t=year`)
+- The `goal` field should ONLY describe what to extract from the page that loads, NOT how to navigate there
+- Goal examples become:
+  - "Extract the titles and top 3 comments from the first 5 posts visible on this page. Return as JSON."
+  - "Extract the first 10 review texts, reviewer names, and star ratings visible on this page. Return as JSON."
+
+This is the key architectural insight from the cookbook: TinyFish works best when you give it a **pre-built URL** and ask it to **extract from the current page** rather than navigate.
+
+---
+
+### Expected Impact
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Individual task time | Unlimited (30+ min observed) | Hard-capped at 120s (actually enforced) |
+| Concurrent agents | All at once (exceeds plan limit) | 4 at a time (matches plan) |
+| Protected site success | 0% (Cloudflare blocks) | Higher with proxy + stealth |
+| Easy site speed | Slow (stealth overhead) | Faster (lite mode) |
+| Goal complexity | Multi-step navigation | Single-page extraction |
+
+### Files Modified
+
+- `supabase/functions/generate-report/index.ts` (all 5 changes)
+
