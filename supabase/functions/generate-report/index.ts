@@ -114,8 +114,12 @@ STEP 2 — SELECT SOURCES USING THIS ROUTING LOGIC
 
 
 
-Using your classification above, select 10-15 sources from the 
-master list below. Every source selection must have a reason. 
+Using your classification above, select 3-15 sources from the 
+master list below depending on query complexity:
+- Simple/focused query (e.g. "best CRM for plumbers"): 3-5 sources
+- Medium query (e.g. "project management tool gaps"): 6-8 sources
+- Broad research (e.g. "mental health app market"): 10-15 sources
+Every source selection must have a reason. 
 Do not default to the same sources for every query.
 
 
@@ -516,80 +520,34 @@ STEP 3 — GENERATE SEARCH TASKS
 
 
 
-Now produce 10-15 search tasks as a JSON array.
+Now produce 3-15 search tasks as a JSON array, matching the source count guidance above.
 
-TinyFish can handle up to 15 concurrent tasks — use this capacity wisely.
+FEWER tasks = FASTER results. Only add tasks that will produce unique signal.
+Simple queries need 3-5 tasks. Don't pad with low-value sources.
 
 
-Rules that cannot be broken:
-- Every task references a specific URL, subreddit, 
-  search query, or named competitor — never vague
+Rules:
+- Every task references a specific URL, subreddit, or named competitor
 - Every extract instruction names exact fields to return
-- SPLITTING IS ENCOURAGED: For high-signal platforms 
-  (Reddit, G2, App Stores, Amazon), create MULTIPLE 
-  tasks targeting different angles. Examples:
-  - Reddit: separate tasks for different subreddits 
-    (r/SaaS, r/startups, r/[topic-specific])
-  - G2/Capterra: separate tasks for different competitors
-  - App Stores: separate tasks for competitor A vs B
-  - Amazon: separate tasks for different product categories
-- No duplicating exact targets — multiple tasks for 
-  the same platform ARE allowed if they target 
-  different pages, subreddits, or search queries
-- Tasks are ordered by expected signal strength 
-  for this specific query — highest first
-- If a platform has no relevant subreddit or 
-  search term for this topic, skip it and 
-  explain why in routing_skipped
-- Never include a source just because it is popular — 
-  only include it if routing logic justifies it
-- Make each task's goal hyper-specific: name exact 
-  subreddits, exact search queries, exact filters, 
-  and exact field extractions
+- Tasks ordered by expected signal strength — highest first
+- No duplicating exact targets
+- Skip sources with no relevant content for this topic
 
 CRITICAL — WRITING EFFECTIVE GOALS FOR TINYFISH:
 
-TinyFish is a browser-automation agent. It navigates to a URL 
-and follows your "goal" as step-by-step browsing instructions. 
-Vague goals produce empty results. Here are examples:
+TinyFish is a browser-automation agent. Keep goals SHORT and SIMPLE.
+Each goal should be a SINGLE PAGE, SINGLE ACTION instruction.
+Do NOT write multi-step browsing scripts — they cause TinyFish to hang.
 
-BAD GOAL (too vague, will return nothing):
-  "Search for project management complaints"
+GOOD GOALS (concise, single-page):
+  "Search reddit.com/r/SaaS for 'CRM frustrations', sort by Top Past Year, extract titles and top 3 comments from first 5 posts. Return as JSON."
+  "Go to g2.com/products/asana/reviews, filter to 1-2 star, extract first 10 'What do you dislike?' responses with reviewer role and company size. Return as JSON."
+  "Search apps.apple.com for 'Calm app', open first result, extract 15 most recent 1-2 star reviews with full text and date. Return as JSON."
 
-GOOD GOAL (specific, actionable steps):
-  "Navigate to reddit.com/r/projectmanagement. Click the search 
-   bar and type 'frustrated OR hate OR switching from'. Sort 
-   results by 'Top' and filter to 'Past Year'. Open the first 
-   5 thread results. In each thread, extract the original post 
-   text, top 10 comments with 5+ upvotes, the commenter names, 
-   upvote counts, and post dates. Return all data as JSON."
+BAD GOALS (too long, multi-step, will timeout):
+  "Navigate to reddit.com. Click search. Type query. Click filters. Select Top. Select Past Year. Open first result. Scroll down. Read comments. Go back. Open second result..."
 
-BAD GOAL:
-  "Find G2 reviews for Asana"
-
-GOOD GOAL:
-  "Navigate to g2.com/products/asana/reviews. Click 'Filter' and 
-   select 1-star and 2-star ratings only. Scroll down and extract 
-   the first 20 reviews. For each review extract: the 'What do 
-   you dislike?' section text, the reviewer's role/title, company 
-   size, star rating, and review date. Return as JSON array."
-
-BAD GOAL:
-  "Look at app store reviews"
-
-GOOD GOAL:
-  "Navigate to the page. Use the search bar to search for 'Calm 
-   app'. Click the first result. Scroll to the Ratings & Reviews 
-   section. Sort by 'Most Recent'. Extract 20 reviews that are 
-   1-star or 2-star. For each review get: full review text, star 
-   rating, date, and reviewer display name. Return as JSON."
-
-Every goal you write MUST include:
-1. Exact navigation steps (what to click, what to type)
-2. Exact filters to apply (star ratings, date range, sort order)
-3. Exact fields to extract (named explicitly)
-4. A quantity (how many items to collect)
-5. Output format instruction ("Return as JSON array")
+Keep each goal to 2-3 sentences max. State: what page, what to search/filter, what to extract, how many items.
 
 
 
@@ -1065,30 +1023,11 @@ function isBlockingError(result: TinyFishResult): boolean {
 }
 
 
-const PLATFORM_TIMEOUTS: Record<string, number> = {
-  // Slow tier — 600s (10 min)
-  reddit: 600_000,
-  patient_communities: 600_000,
-  discourse_forums: 600_000,
-  // Medium-slow — 480s (8 min) for Google-routed platforms
-  apple_app_store: 480_000,
-  youtube_comments: 480_000,
-  // Fast tier — 180s (3 min)
-  twitter_x: 180_000,
-  producthunt: 180_000,
-  quora: 180_000,
-  alternativeto: 180_000,
-  trustpilot: 180_000,
-  bbb_complaints: 180_000,
-  indie_review_sites: 180_000,
-  indiehackers: 180_000,
-  discord_public: 180_000,
-  job_postings: 180_000,
-};
-const DEFAULT_TIMEOUT = 300_000; // Medium tier — 300s (5 min)
+// Flat 120-second timeout for ALL platforms. If TinyFish can't get data in 2 min, it won't in 10.
+const TINYFISH_TIMEOUT_MS = 120_000;
 
-function getTimeout(platform: string): number {
-  return PLATFORM_TIMEOUTS[platform] ?? DEFAULT_TIMEOUT;
+function getTimeout(_platform: string): number {
+  return TINYFISH_TIMEOUT_MS;
 }
 
 async function runTinyFishTask(
@@ -1383,112 +1322,155 @@ serve(async (req: Request) => {
         send(logEvent(`Dispatching ${tasks.length} TinyFish agents in stealth mode...`, "info"));
         send(sseEvent("phase_update", { phase: "scraping", detail: `0 of ${tasks.length} sources complete` }));
 
-        // ═══ STAGE 2: TINYFISH SCRAPING + QUALITY FILTERING (INCREMENTAL) ═══
+        // ═══ STAGE 2: TINYFISH SCRAPING + QUALITY FILTERING (TIME-BUDGETED) ═══
 
         const filteredDataByPlatform: Array<{ platform: string; data: any }> = [];
         let doneCount = 0;
+        let dataCount = 0; // tasks that returned actual data
         const totalTasks = tasks.length;
+        const SCRAPING_DEADLINE_MS = 300_000; // 5 minutes max for all scraping
+        const scrapingAbort = new AbortController();
+        let earlyResolved = false;
 
-        // Each task independently streams its own SSE events as it completes
-        const wrapperPromises = tasks.map(async (task) => {
-          // Mark this source as searching
-          send(sseEvent("source_update", {
-            platform: task.platform,
-            status: "searching",
-            items_found: 0,
-            message: `${task.platform}: starting scrape...`,
-          }));
+        // Wrap scraping in a deadline race
+        const scrapingPromise = new Promise<void>((resolveAll) => {
+          // Deadline timer
+          const deadlineTimer = setTimeout(() => {
+            if (!earlyResolved) {
+              earlyResolved = true;
+              send(logEvent(`⏱ Time budget reached (5 min) — synthesizing with ${dataCount} sources`, "info"));
+              scrapingAbort.abort();
+              resolveAll();
+            }
+          }, SCRAPING_DEADLINE_MS);
 
-          const timeoutMs = getTimeout(task.platform);
-          let result = await runTinyFishTask(task, TINYFISH_API_KEY, timeoutMs, send);
+          const checkEarlyExit = () => {
+            if (earlyResolved) return;
+            // Early exit: 60%+ done AND at least 2 data sources
+            if (doneCount >= Math.ceil(totalTasks * 0.6) && dataCount >= 2) {
+              earlyResolved = true;
+              clearTimeout(deadlineTimer);
+              send(logEvent(`✓ ${dataCount} sources collected (${doneCount}/${totalTasks} done) — proceeding to synthesis`, "info"));
+              scrapingAbort.abort();
+              resolveAll();
+            }
+            // All done
+            if (doneCount >= totalTasks) {
+              earlyResolved = true;
+              clearTimeout(deadlineTimer);
+              resolveAll();
+            }
+          };
 
-          // ── FALLBACK LOGIC: if blocked or empty, try substitute source ──
-          if (isBlockingError(result)) {
-            const fallback = getFallback(task.platform, task, classification);
-            if (fallback) {
-              const displayName = task.platform.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
-              send(logEvent(`${displayName} blocked — switching to ${fallback.label}.`, "info"));
-              send(sseEvent("source_update", {
-                platform: task.platform,
-                status: "searching",
-                items_found: 0,
-                message: `${displayName} blocked — falling back to ${fallback.label}`,
-              }));
+          // Each task independently streams its own SSE events as it completes
+          tasks.forEach(async (task) => {
+            if (scrapingAbort.signal.aborted) {
+              doneCount++;
+              checkEarlyExit();
+              return;
+            }
 
-              const topic = task.goal.match(/search for ['"]?([^'",.]+)['"]?/i)?.[1] || "the topic";
-              const fallbackTask: TinyFishTask = {
-                platform: fallback.platform,
-                url_or_query: fallback.url_or_query,
-                goal: fallback.goalTemplate(topic),
-                selection_reason: `Fallback for blocked ${displayName}`,
-                extract: task.extract,
-              };
+            // Mark this source as searching
+            send(sseEvent("source_update", {
+              platform: task.platform,
+              status: "searching",
+              items_found: 0,
+              message: `${task.platform}: starting scrape...`,
+            }));
 
-              const fallbackTimeout = getTimeout(fallback.platform);
-              result = await runTinyFishTask(fallbackTask, TINYFISH_API_KEY, fallbackTimeout, send);
+            const timeoutMs = getTimeout(task.platform);
+            let result = await runTinyFishTask(task, TINYFISH_API_KEY, timeoutMs, send);
 
-              // Use fallback platform name for downstream processing
-              if (result.success) {
-                result.platform = fallback.platform;
-                send(logEvent(`${fallback.label}: fallback succeeded`, "found"));
-              } else {
-                send(logEvent(`${fallback.label}: fallback also failed — ${result.error || "unknown"}`, "error"));
+            // ── FALLBACK LOGIC: if blocked or empty, try substitute source ──
+            if (isBlockingError(result) && !scrapingAbort.signal.aborted) {
+              const fallback = getFallback(task.platform, task, classification);
+              if (fallback) {
+                const displayName = task.platform.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
+                send(logEvent(`${displayName} blocked — switching to ${fallback.label}.`, "info"));
+                send(sseEvent("source_update", {
+                  platform: task.platform,
+                  status: "searching",
+                  items_found: 0,
+                  message: `${displayName} blocked — falling back to ${fallback.label}`,
+                }));
+
+                const topic = task.goal.match(/search for ['"]?([^'",.]+)['"]?/i)?.[1] || "the topic";
+                const fallbackTask: TinyFishTask = {
+                  platform: fallback.platform,
+                  url_or_query: fallback.url_or_query,
+                  goal: fallback.goalTemplate(topic),
+                  selection_reason: `Fallback for blocked ${displayName}`,
+                  extract: task.extract,
+                };
+
+                const fallbackTimeout = getTimeout(fallback.platform);
+                result = await runTinyFishTask(fallbackTask, TINYFISH_API_KEY, fallbackTimeout, send);
+
+                if (result.success) {
+                  result.platform = fallback.platform;
+                  send(logEvent(`${fallback.label}: fallback succeeded`, "found"));
+                } else {
+                  send(logEvent(`${fallback.label}: fallback also failed — ${result.error || "unknown"}`, "error"));
+                }
               }
             }
-          }
 
-          if (!result.success) {
-            const error = result.error || "Failed";
-            send(sseEvent("source_update", {
-              platform: task.platform,
-              status: "error",
-              items_found: 0,
-              message: `${task.platform}: ${error}`,
-            }));
-            send(logEvent(`${task.platform}: failed — ${error}`, "error"));
+            if (!result.success) {
+              const error = result.error || "Failed";
+              send(sseEvent("source_update", {
+                platform: task.platform,
+                status: "error",
+                items_found: 0,
+                message: `${task.platform}: ${error}`,
+              }));
+              send(logEvent(`${task.platform}: failed — ${error}`, "error"));
+              doneCount++;
+              send(sseEvent("phase_update", { phase: "scraping", detail: `${doneCount} of ${totalTasks} sources complete` }));
+              checkEarlyExit();
+              return;
+            }
+
+            // TinyFish succeeded — run quality filter
+            const rawData = result.data;
+            const activePlatform = result.platform;
+            send(logEvent(`${activePlatform}: data received, filtering for quality...`, "found"));
+
+            try {
+              const rawStr = typeof rawData === "string" ? rawData : JSON.stringify(rawData);
+              const itemCount = Array.isArray(rawData) ? rawData.length : 1;
+              const filterPrompt = buildQualityFilterPrompt(activePlatform, itemCount, query);
+              const filtered = await callGeminiJSON(filterPrompt, "google/gemini-2.5-flash", rawStr) as any;
+
+              const itemsFound = filtered.items?.length || 0;
+              filteredDataByPlatform.push({ platform: activePlatform, data: filtered });
+              dataCount++;
+
+              send(sseEvent("source_update", {
+                platform: task.platform,
+                status: "done",
+                items_found: itemsFound,
+                message: `${activePlatform}: ${itemsFound} quality items (signal: ${filtered.signal || "unknown"})`,
+              }));
+              send(logEvent(`${activePlatform}: ${itemsFound} items passed quality filter (${filtered.signal || "?"})`, "found"));
+            } catch (filterErr) {
+              console.error(`Quality filter failed for ${activePlatform}:`, filterErr);
+              filteredDataByPlatform.push({ platform: activePlatform, data: { signal: "UNFILTERED", items: rawData } });
+              dataCount++;
+              send(sseEvent("source_update", {
+                platform: task.platform,
+                status: "done",
+                items_found: Array.isArray(rawData) ? rawData.length : 1,
+                message: `${activePlatform}: quality filter failed, using raw data`,
+              }));
+            }
+
             doneCount++;
             send(sseEvent("phase_update", { phase: "scraping", detail: `${doneCount} of ${totalTasks} sources complete` }));
-            return null;
-          }
-
-          // TinyFish succeeded — run quality filter
-          const rawData = result.data;
-          const activePlatform = result.platform;
-          send(logEvent(`${activePlatform}: data received, filtering for quality...`, "found"));
-
-          try {
-            const rawStr = typeof rawData === "string" ? rawData : JSON.stringify(rawData);
-            const itemCount = Array.isArray(rawData) ? rawData.length : 1;
-            const filterPrompt = buildQualityFilterPrompt(activePlatform, itemCount, query);
-            const filtered = await callGeminiJSON(filterPrompt, "google/gemini-2.5-flash", rawStr) as any;
-
-            const itemsFound = filtered.items?.length || 0;
-            filteredDataByPlatform.push({ platform: activePlatform, data: filtered });
-
-            send(sseEvent("source_update", {
-              platform: task.platform,
-              status: "done",
-              items_found: itemsFound,
-              message: `${activePlatform}: ${itemsFound} quality items (signal: ${filtered.signal || "unknown"})`,
-            }));
-            send(logEvent(`${activePlatform}: ${itemsFound} items passed quality filter (${filtered.signal || "?"})`, "found"));
-          } catch (filterErr) {
-            console.error(`Quality filter failed for ${activePlatform}:`, filterErr);
-            filteredDataByPlatform.push({ platform: activePlatform, data: { signal: "UNFILTERED", items: rawData } });
-            send(sseEvent("source_update", {
-              platform: task.platform,
-              status: "done",
-              items_found: Array.isArray(rawData) ? rawData.length : 1,
-              message: `${activePlatform}: quality filter failed, using raw data`,
-            }));
-          }
-
-          doneCount++;
-          send(sseEvent("phase_update", { phase: "scraping", detail: `${doneCount} of ${totalTasks} sources complete` }));
-          return { platform: activePlatform };
+            checkEarlyExit();
+          });
         });
 
-        await Promise.allSettled(wrapperPromises);
+        await scrapingPromise;
 
         // Check if we have any data at all
         if (filteredDataByPlatform.length === 0) {
