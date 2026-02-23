@@ -214,6 +214,12 @@ export async function startLiveStream(
             const eventBlock = buffer.slice(0, eventEnd);
             buffer = buffer.slice(eventEnd + 2);
 
+            // Detect SSE comments (keepalive)
+            if (eventBlock.trimStart().startsWith(":")) {
+              callback("keepalive", {});
+              continue;
+            }
+
             let eventType = "";
             let eventData = "";
 

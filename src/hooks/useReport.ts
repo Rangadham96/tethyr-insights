@@ -76,6 +76,8 @@ export function useReport() {
 
   const handleEvent = useCallback((eventType: string, data: unknown) => {
     lastEventTimeRef.current = Date.now();
+    // Keepalive just resets the timer, no state changes
+    if (eventType === "keepalive") return;
     setIsStale(false);
     switch (eventType) {
       case "classification_complete": {
@@ -217,7 +219,7 @@ export function useReport() {
     setAppState("idle");
   }, []);
 
-  // Stale connection detection: check every 30s if no event received for 90s
+  // Stale connection detection: check every 45s if no event/keepalive for 150s
   useEffect(() => {
     if (appState !== "searching") {
       setIsStale(false);
@@ -225,10 +227,10 @@ export function useReport() {
     }
     const interval = setInterval(() => {
       const elapsed = Date.now() - lastEventTimeRef.current;
-      if (elapsed > 90_000) {
+      if (elapsed > 150_000) {
         setIsStale(true);
       }
-    }, 30_000);
+    }, 45_000);
     return () => clearInterval(interval);
   }, [appState]);
 

@@ -65,7 +65,7 @@ const SearchingState = ({
   };
 
   const { stage, estimate } = getPhaseLabel();
-  const showSlowWarning = elapsedSeconds > 120 && !isStale;
+  const showSlowWarning = elapsedSeconds > 300 && !isStale;
 
   return (
     <div className="flex flex-col h-full overflow-y-auto px-10 py-8" style={{ scrollbarWidth: "thin" }}>
@@ -80,7 +80,7 @@ const SearchingState = ({
               Connection Lost
             </div>
             <p className="font-body text-[13px] text-ink-3 font-light">
-              No updates received for 90 seconds. The connection may have dropped.
+              No updates received for 2.5 minutes. The connection may have dropped.
             </p>
           </div>
           <div className="flex gap-2 ml-4 flex-shrink-0">
@@ -89,7 +89,7 @@ const SearchingState = ({
                 onClick={onRetry}
                 className="bg-ink text-paper px-4 py-2 font-mono text-[9px] tracking-[0.14em] uppercase border-none cursor-pointer hover:bg-red transition-colors"
               >
-                Retry →
+                Retry Same Query →
               </button>
             )}
             {onReset && (
@@ -97,7 +97,7 @@ const SearchingState = ({
                 onClick={onReset}
                 className="bg-transparent text-ink-3 px-4 py-2 font-mono text-[9px] tracking-[0.14em] uppercase border border-ink/20 cursor-pointer hover:text-ink transition-colors"
               >
-                Start Fresh
+                New Query
               </button>
             )}
           </div>
@@ -215,7 +215,7 @@ const SearchingState = ({
               onClick={onReset}
               className="mt-2 bg-transparent text-ink-3 px-3 py-1.5 font-mono text-[9px] tracking-[0.14em] uppercase border border-ink/20 cursor-pointer hover:text-ink transition-colors"
             >
-              Start Fresh
+              New Query
             </button>
           )}
         </div>
