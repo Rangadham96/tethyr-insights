@@ -535,19 +535,37 @@ Rules:
 
 CRITICAL — WRITING EFFECTIVE GOALS FOR TINYFISH:
 
-TinyFish is a browser-automation agent. Keep goals SHORT and SIMPLE.
-Each goal should be a SINGLE PAGE, SINGLE ACTION instruction.
-Do NOT write multi-step browsing scripts — they cause TinyFish to hang.
+TinyFish is a browser-automation agent that works best with ONE PAGE, ONE EXTRACTION.
+The key principle: PRE-BUILD THE URL so TinyFish lands directly on the data page.
+The goal should ONLY describe what to EXTRACT from the page, NOT how to navigate there.
 
-GOOD GOALS (concise, single-page):
-  "Search reddit.com/r/SaaS for 'CRM frustrations', sort by Top Past Year, extract titles and top 3 comments from first 5 posts. Return as JSON."
-  "Go to g2.com/products/asana/reviews, filter to 1-2 star, extract first 10 'What do you dislike?' responses with reviewer role and company size. Return as JSON."
-  "Search apps.apple.com for 'Calm app', open first result, extract 15 most recent 1-2 star reviews with full text and date. Return as JSON."
+URL RULES:
+- url_or_query MUST be a fully-formed URL with search/filter parameters already embedded
+- Reddit: https://www.reddit.com/r/SaaS/search/?q=CRM+frustrations&sort=top&t=year
+- G2: https://www.g2.com/products/asana/reviews?order=most_recent&star_rating=1-2
+- HN: https://hn.algolia.com/?q=CRM+frustrations&type=story&sort=byPopularity&dateRange=pastYear
+- Capterra: https://www.capterra.com/p/12345/ProductName/reviews/?sort=most_recent
+- Stack Overflow: https://stackoverflow.com/search?q=CRM+integration+issues&tab=votes
+- Quora: https://www.quora.com/search?q=CRM+frustrations
+- Amazon: https://www.amazon.com/product-reviews/ASIN/?filterByStar=one_star
 
-BAD GOALS (too long, multi-step, will timeout):
-  "Navigate to reddit.com. Click search. Type query. Click filters. Select Top. Select Past Year. Open first result. Scroll down. Read comments. Go back. Open second result..."
+GOAL RULES:
+- 1-2 sentences MAXIMUM
+- ONLY describe what to extract from the page that loads
+- Never say "navigate to", "search for", "click on", "sort by" — the URL already handles that
 
-Keep each goal to 2-3 sentences max. State: what page, what to search/filter, what to extract, how many items.
+GOOD GOALS (extraction-only):
+  url: "https://www.reddit.com/r/SaaS/search/?q=CRM+frustrations&sort=top&t=year"
+  goal: "Extract titles and top 3 comments from the first 5 posts on this page. Return as JSON."
+
+  url: "https://www.g2.com/products/asana/reviews?star_rating=1-2"
+  goal: "Extract the first 10 review texts, reviewer roles, and star ratings visible on this page. Return as JSON."
+
+BAD GOALS (navigation instructions — will timeout):
+  "Navigate to reddit.com. Click search. Type query. Click filters. Select Top..."
+  "Go to g2.com, search for Asana, click reviews tab, filter by 1 star..."
+
+Keep each goal to 1-2 sentences. State ONLY: what to extract, how many items, what format.
 
 
 
@@ -1067,15 +1085,64 @@ function getTimeout(_platform: string): number {
   return TINYFISH_TIMEOUT_MS;
 }
 
+// ═══════════════════════════════════════════════
+// PLATFORM CONFIGURATION SETS
+// ═══════════════════════════════════════════════
+
+// Platforms that need anti-detection browser (bot-protected sites)
+const STEALTH_PLATFORMS = new Set([
+  "g2", "capterra", "trustpilot", "glassdoor",
+  "amazon_reviews", "apple_app_store", "google_play_store",
+]);
+
+// Platforms that need residential proxy to bypass Cloudflare/geo-blocks
+const PROXY_PLATFORMS = new Set([
+  "g2", "capterra", "trustpilot", "glassdoor", "amazon_reviews",
+]);
+
+// ═══════════════════════════════════════════════
+// CONCURRENCY LIMITER
+// ═══════════════════════════════════════════════
+
+async function runWithConcurrency<T>(
+  taskFactories: Array<() => Promise<T>>,
+  maxConcurrent: number,
+): Promise<T[]> {
+  const results: T[] = [];
+  const executing: Set<Promise<void>> = new Set();
+
+  for (const factory of taskFactories) {
+    const p = factory().then((result) => {
+      results.push(result);
+    });
+    const tracked = p.then(() => executing.delete(tracked));
+    executing.add(tracked);
+
+    if (executing.size >= maxConcurrent) {
+      await Promise.race(executing);
+    }
+  }
+
+  await Promise.all(executing);
+  return results;
+}
+
+const MAX_CONCURRENT_AGENTS = 4;
+
 async function runTinyFishTask(
   task: TinyFishTask,
   apiKey: string,
   timeoutMs: number,
   send: (chunk: string) => void,
 ): Promise<TinyFishResult> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const browserProfile = STEALTH_PLATFORMS.has(task.platform) ? "stealth" : "lite";
+    const proxyConfig = PROXY_PLATFORMS.has(task.platform)
+      ? { proxy_config: { enabled: true, country_code: "US" } }
+      : {};
 
     const response = await fetch("https://agent.tinyfish.ai/v1/automation/run-sse", {
       method: "POST",
@@ -1086,12 +1153,13 @@ async function runTinyFishTask(
       body: JSON.stringify({
         url: task.url_or_query,
         goal: task.goal,
-        browser_profile: "stealth",
+        browser_profile: browserProfile,
+        ...proxyConfig,
       }),
       signal: controller.signal,
     });
 
-    clearTimeout(timeout);
+    // DON'T clear timeout here — it must protect the entire SSE stream lifecycle
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -1151,6 +1219,8 @@ async function runTinyFishTask(
     const msg = e instanceof Error ? e.message : "Unknown error";
     console.error(`TinyFish task failed for ${task.platform}:`, msg);
     return { platform: task.platform, success: false, data: null, error: msg };
+  } finally {
+    clearTimeout(timeout); // Only clear AFTER stream is fully read or aborted
   }
 }
 
@@ -1356,7 +1426,7 @@ serve(async (req: Request) => {
           sources_skipped: sourcesSkipped,
         }));
 
-        send(logEvent(`Dispatching ${tasks.length} TinyFish agents in stealth mode...`, "info"));
+        send(logEvent(`Dispatching ${tasks.length} TinyFish agents (max ${MAX_CONCURRENT_AGENTS} concurrent, lite/stealth per platform)...`, "info"));
         send(sseEvent("phase_update", { phase: "scraping", detail: `0 of ${tasks.length} sources complete` }));
 
         // ═══ STAGE 2: TINYFISH SCRAPING + QUALITY FILTERING (TIME-BUDGETED) ═══
@@ -1399,8 +1469,8 @@ serve(async (req: Request) => {
             }
           };
 
-          // Each task independently streams its own SSE events as it completes
-          tasks.forEach(async (task) => {
+          // Each task runs as a factory function, limited to MAX_CONCURRENT_AGENTS at a time
+          const taskFactories = tasks.map((task) => async () => {
             if (scrapingAbort.signal.aborted) {
               doneCount++;
               checkEarlyExit();
@@ -1504,6 +1574,11 @@ serve(async (req: Request) => {
             doneCount++;
             send(sseEvent("phase_update", { phase: "scraping", detail: `${doneCount} of ${totalTasks} sources complete` }));
             checkEarlyExit();
+          });
+
+          // Run with concurrency limit instead of all-at-once
+          runWithConcurrency(taskFactories, MAX_CONCURRENT_AGENTS).catch((err) => {
+            console.error("Concurrency runner error:", err);
           });
         });
 
