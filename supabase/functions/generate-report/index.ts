@@ -875,10 +875,47 @@ interface TinyFishResult {
 // platforms that block direct access
 // ═══════════════════════════════════════════════
 
+// Base URLs for platforms — used when classification returns a search string instead of a valid URL
+const PLATFORM_BASE_URLS: Record<string, string> = {
+  reddit: "https://www.reddit.com",
+  hackernews: "https://news.ycombinator.com",
+  g2: "https://www.g2.com",
+  capterra: "https://www.capterra.com",
+  trustpilot: "https://www.trustpilot.com",
+  apple_app_store: "https://www.google.com",
+  google_play_store: "https://play.google.com/store/apps",
+  youtube_comments: "https://www.google.com",
+  stackoverflow: "https://stackoverflow.com",
+  quora: "https://www.quora.com",
+  producthunt: "https://www.producthunt.com",
+  indie_hackers: "https://www.indiehackers.com",
+  patient_communities: "https://healthunlocked.com",
+  academic_papers: "https://scholar.google.com",
+  amazon_reviews: "https://www.amazon.com",
+  job_postings: "https://www.indeed.com",
+  twitter: "https://twitter.com",
+  linkedin: "https://www.linkedin.com",
+};
+
+function isValidUrl(str: string): boolean {
+  try {
+    const u = new URL(str);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function transformTasks(tasks: TinyFishTask[], classification: any): TinyFishTask[] {
   const transformed: TinyFishTask[] = [];
 
   for (const task of tasks) {
+    // Ensure url_or_query is a valid URL — if not, use the platform's base URL
+    if (!isValidUrl(task.url_or_query)) {
+      const baseUrl = PLATFORM_BASE_URLS[task.platform] || "https://www.google.com";
+      console.warn(`Invalid URL for ${task.platform}: "${task.url_or_query}" — using ${baseUrl}`);
+      task.url_or_query = baseUrl;
+    }
     // APPLE APP STORE: Route through Google search instead of apple.com
     if (task.platform === "apple_app_store") {
       // Extract app/topic from the goal to build a Google search
