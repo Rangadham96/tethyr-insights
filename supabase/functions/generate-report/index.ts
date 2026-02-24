@@ -236,29 +236,38 @@ before it goes into a market intelligence report.
 You have received raw data from ${platform} containing 
 ${itemCount} items related to this query: ${query}
 
+IMPORTANT: The data comes from a browser automation agent that extracts 
+structured fields from web pages. Items may be short (titles, snippets, 
+review summaries). This is NORMAL — short items are still valid signal.
+
 Your job:
 
-1. Remove any item that is: off-topic, spam, bot-generated, 
-   less than 2 sentences, or does not contain a genuine human 
-   opinion or experience
+1. Remove ONLY items that are: completely off-topic (unrelated to the query),
+   obvious spam/advertising, or clearly bot-generated gibberish.
+   
+   DO NOT remove items just because they are short. A post title like 
+   "What CRM do you use for your small team?" IS valid signal.
+   A review snippet like "Too expensive for small teams" IS valid signal.
+   Even a single sentence expressing frustration or a need is valid.
 
 2. Flag the overall signal strength as one of:
-   - STRONG: 10+ genuine items with clear emotional signal
-   - MODERATE: 5-9 genuine items  
-   - WEAK: fewer than 5 genuine items
-   - NONE: no relevant signal found
+   - STRONG: 10+ relevant items
+   - MODERATE: 5-9 relevant items  
+   - WEAK: 1-4 relevant items
+   - NONE: zero relevant items found (data was entirely off-topic or empty)
 
-3. For each item that passes, extract:
-   - The core complaint, request, or observation in one sentence
-   - The exact quote that best represents it (under 40 words)
-   - Source URL
-   - Date
-   - Sentiment: frustrated / requesting / praising / neutral
+3. For each item that passes, preserve ALL original fields and add:
+   - core_insight: one sentence summarizing the signal (complaint, request, or observation)
+   - sentiment: frustrated / requesting / praising / neutral
 
-Return JSON only. If signal is NONE, return 
-{"signal": "NONE", "items": []}
+CRITICAL: Be INCLUSIVE, not exclusive. When in doubt, KEEP the item.
+The synthesis stage will handle deeper analysis. Your job is only to 
+remove obvious garbage, not to judge quality.
 
-Do not summarise. Do not paraphrase. Preserve exact quotes.`;
+Return JSON: {"signal": "STRONG|MODERATE|WEAK|NONE", "items": [...]}
+If truly no relevant items exist, return {"signal": "NONE", "items": []}
+
+Do not summarise. Do not paraphrase. Preserve all original data fields.`;
 }
 
 // ═══════════════════════════════════════════════
@@ -1206,19 +1215,45 @@ serve(async (req: Request) => {
               const filtered = await callGeminiJSON(filterPrompt, "google/gemini-2.5-flash", rawStr) as any;
 
               const itemsFound = filtered.items?.length || 0;
-              filteredDataByPlatform.push({ platform: activePlatform, data: filtered });
-              dataCount++;
 
-              send(sseEvent("source_update", {
-                platform: task.platform,
-                status: "done",
-                items_found: itemsFound,
-                message: `${activePlatform}: ${itemsFound} quality items (signal: ${filtered.signal || "unknown"})`,
-              }));
-              send(logEvent(`${activePlatform}: ${itemsFound} items passed quality filter (${filtered.signal || "?"})`, "found"));
+              // Safety net: if filter returned NONE but raw data has content, use raw data
+              if (itemsFound === 0 && rawData) {
+                const hasRawContent = Array.isArray(rawData) ? rawData.length > 0 
+                  : (typeof rawData === "object" && rawData !== null && Object.keys(rawData).length > 0);
+                if (hasRawContent) {
+                  send(logEvent(`${activePlatform}: quality filter returned 0 items but raw data exists — using raw data`, "info"));
+                  filteredDataByPlatform.push({ platform: activePlatform, data: { signal: "WEAK", items: Array.isArray(rawData) ? rawData : [rawData] } });
+                  dataCount++;
+                  send(sseEvent("source_update", {
+                    platform: task.platform,
+                    status: "done",
+                    items_found: Array.isArray(rawData) ? rawData.length : 1,
+                    message: `${activePlatform}: ${Array.isArray(rawData) ? rawData.length : 1} items (raw, filter too strict)`,
+                  }));
+                } else {
+                  filteredDataByPlatform.push({ platform: activePlatform, data: filtered });
+                  dataCount++;
+                  send(sseEvent("source_update", {
+                    platform: task.platform,
+                    status: "done",
+                    items_found: 0,
+                    message: `${activePlatform}: no relevant items found`,
+                  }));
+                }
+              } else {
+                filteredDataByPlatform.push({ platform: activePlatform, data: filtered });
+                dataCount++;
+                send(sseEvent("source_update", {
+                  platform: task.platform,
+                  status: "done",
+                  items_found: itemsFound,
+                  message: `${activePlatform}: ${itemsFound} quality items (signal: ${filtered.signal || "unknown"})`,
+                }));
+                send(logEvent(`${activePlatform}: ${itemsFound} items passed quality filter (${filtered.signal || "?"})`, "found"));
+              }
             } catch (filterErr) {
               console.error(`Quality filter failed for ${activePlatform}:`, filterErr);
-              filteredDataByPlatform.push({ platform: activePlatform, data: { signal: "UNFILTERED", items: rawData } });
+              filteredDataByPlatform.push({ platform: activePlatform, data: { signal: "UNFILTERED", items: Array.isArray(rawData) ? rawData : [rawData] } });
               dataCount++;
               send(sseEvent("source_update", {
                 platform: task.platform,
