@@ -125,7 +125,7 @@ ABSOLUTE RULES FOR EVERY GOAL:
 
 1. The url_or_query MUST be a fully-formed URL that lands DIRECTLY on the data page.
    URL EXAMPLES (search params pre-embedded):
-   - Reddit: https://www.reddit.com/r/SaaS/search/?q=CRM+frustrations&sort=top&t=year
+   - Reddit: https://old.reddit.com/r/SaaS/search/?q=CRM+frustrations&sort=top&t=year
    - G2: https://www.g2.com/products/asana/reviews?segment=small-business
    - HN: https://hn.algolia.com/?q=CRM&type=story&sort=byPopularity
    - Capterra: https://www.capterra.com/p/12345/ProductName/reviews/
@@ -147,8 +147,9 @@ ABSOLUTE RULES FOR EVERY GOAL:
 
    STOP CONDITIONS:
    - Stop after extracting [max_items] items OR all visible items, whichever is fewer
-   - Do NOT scroll more than 3 times
-   - Do NOT click pagination, 'Load More', or navigate to other pages
+   - Scroll down to load content if needed, but stop after 5 scrolls maximum
+   - If a "Load More" button exists, click it once to load additional items
+   - Do NOT navigate away from this page (no clicking into posts, threads, or detail pages)
 
    EDGE CASES:
    - If a cookie/consent banner appears, close it first
@@ -163,7 +164,7 @@ ABSOLUTE RULES FOR EVERY GOAL:
 5. NEVER say "first 5 posts", "top 10 comments" — use "all visible" and let max_items handle limits.
 
 GOOD GOAL EXAMPLE:
-  url: "https://www.reddit.com/r/SaaS/search/?q=CRM+frustrations&sort=top&t=year"
+  url: "https://old.reddit.com/r/SaaS/search/?q=CRM+frustrations&sort=top&t=year"
   goal: "Extract all visible post titles and preview text on this page.
   
   For each item, extract ONLY:
@@ -175,8 +176,9 @@ GOOD GOAL EXAMPLE:
 
   STOP CONDITIONS:
   - Stop after 15 items or all visible, whichever is fewer
-  - Do NOT scroll more than 3 times
-  - Do NOT click into any posts
+  - Scroll down to load content if needed, but stop after 5 scrolls maximum
+  - If a "Load More" button exists, click it once
+  - Do NOT navigate away from this page (no clicking into posts)
 
   EDGE CASES:
   - If cookie banner appears, close it first
@@ -463,7 +465,7 @@ interface TinyFishResult {
 // ═══════════════════════════════════════════════
 
 const PLATFORM_BASE_URLS: Record<string, string> = {
-  reddit: "https://www.reddit.com",
+  reddit: "https://old.reddit.com",
   hackernews: "https://news.ycombinator.com",
   g2: "https://www.g2.com",
   capterra: "https://www.capterra.com",
@@ -532,7 +534,8 @@ function getFallback(
   originalTask: TinyFishTask,
   classification: any,
 ): FallbackDef | null {
-  const topic = originalTask.extract?.fields?.[0] || "the topic";
+  // Use the original query context, NOT field names like "post_title"
+  const topic = (originalTask.goal.match(/related to[:\s]*["']?([^"'\n]+)/i)?.[1] || "the topic").trim();
 
   switch (failedPlatform) {
     case "apple_app_store":
@@ -551,8 +554,8 @@ For each item, extract ONLY:
 
 STOP CONDITIONS:
 - Stop after 10 items or all visible, whichever is fewer
-- Do NOT scroll more than 3 times
-- Do NOT click into any app pages
+- Scroll down to load content if needed, but stop after 5 scrolls maximum
+- Do NOT navigate away from this page (no clicking into app pages)
 
 EDGE CASES:
 - If cookie banner appears, close it first
@@ -566,7 +569,7 @@ If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
       return {
         platform: "reddit",
         label: "Reddit video discussions",
-        urlTemplate: (t) => `https://www.reddit.com/search/?q=${encodeURIComponent(t + ' review video')}&sort=relevance&t=year`,
+        urlTemplate: (t) => `https://old.reddit.com/search/?q=${encodeURIComponent(t + ' review video')}&sort=relevance&t=year`,
         goalTemplate: (t) =>
           `Extract all visible post titles and preview text on this page.
 
@@ -579,8 +582,8 @@ For each item, extract ONLY:
 
 STOP CONDITIONS:
 - Stop after 15 items or all visible, whichever is fewer
-- Do NOT scroll more than 3 times
-- Do NOT click into any posts
+- Scroll down to load content if needed, but stop after 5 scrolls maximum
+- Do NOT navigate away from this page (no clicking into posts)
 
 EDGE CASES:
 - If cookie banner appears, close it first
@@ -606,8 +609,8 @@ For each item, extract ONLY:
 
 STOP CONDITIONS:
 - Stop after 10 items or all visible, whichever is fewer
-- Do NOT scroll more than 3 times
-- Do NOT click into any questions
+- Scroll down to load content if needed, but stop after 5 scrolls maximum
+- Do NOT navigate away from this page (no clicking into questions)
 
 EDGE CASES:
 - If cookie banner appears, close it first
@@ -635,8 +638,8 @@ For each item, extract ONLY:
 
 STOP CONDITIONS:
 - Stop after 15 items or all visible, whichever is fewer
-- Do NOT scroll more than 3 times
-- Do NOT click into any threads
+- Scroll down to load content if needed, but stop after 5 scrolls maximum
+- Do NOT navigate away from this page (no clicking into threads)
 
 EDGE CASES:
 - If cookie banner appears, close it first
@@ -649,7 +652,7 @@ If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
       return {
         platform: "reddit",
         label: "Reddit communities",
-        urlTemplate: (t) => `https://www.reddit.com/search/?q=${encodeURIComponent(t)}&sort=relevance&t=year`,
+        urlTemplate: (t) => `https://old.reddit.com/search/?q=${encodeURIComponent(t)}&sort=relevance&t=year`,
         goalTemplate: (t) =>
           `Extract all visible post titles and preview text on this page.
 
@@ -662,8 +665,8 @@ For each item, extract ONLY:
 
 STOP CONDITIONS:
 - Stop after 15 items or all visible, whichever is fewer
-- Do NOT scroll more than 3 times
-- Do NOT click into any posts
+- Scroll down to load content if needed, but stop after 5 scrolls maximum
+- Do NOT navigate away from this page (no clicking into posts)
 
 EDGE CASES:
 - If cookie banner appears, close it first
@@ -681,7 +684,7 @@ If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
       return {
         platform: "reddit",
         label: "Reddit B2B discussions",
-        urlTemplate: (t) => `https://www.reddit.com/search/?q=${encodeURIComponent(t + ' review OR comparison OR alternative')}&sort=relevance&t=year`,
+        urlTemplate: (t) => `https://old.reddit.com/search/?q=${encodeURIComponent(t + ' review OR comparison OR alternative')}&sort=relevance&t=year`,
         goalTemplate: (t) =>
           `Extract all visible post titles and preview text on this page.
 
@@ -694,8 +697,8 @@ For each item, extract ONLY:
 
 STOP CONDITIONS:
 - Stop after 15 items or all visible, whichever is fewer
-- Do NOT scroll more than 3 times
-- Do NOT click into any posts
+- Scroll down to load content if needed, but stop after 5 scrolls maximum
+- Do NOT navigate away from this page (no clicking into posts)
 
 EDGE CASES:
 - If cookie banner appears, close it first
@@ -745,10 +748,12 @@ function getTimeout(_platform: string): number {
 const STEALTH_PLATFORMS = new Set([
   "trustpilot",
   "amazon_reviews", "apple_app_store", "google_play_store",
+  "reddit", "alternativeto", "producthunt", "indiehackers",
 ]);
 
 const PROXY_PLATFORMS = new Set([
   "trustpilot", "amazon_reviews",
+  "reddit", "alternativeto", "producthunt",
 ]);
 
 // ═══════════════════════════════════════════════
@@ -778,7 +783,7 @@ async function runWithConcurrency<T>(
   return results;
 }
 
-const MAX_CONCURRENT_AGENTS = 4;
+const MAX_CONCURRENT_AGENTS = 3;
 
 // Change 4: Inject extract spec into goal text before sending to TinyFish
 function buildEnrichedGoal(task: TinyFishTask): string {
@@ -843,7 +848,6 @@ async function runTinyFishTask(
         url: task.url_or_query,
         goal: enrichedGoal,
         browser_profile: browserProfile,
-        max_steps: 15, // Change 8: Prevent agent looping
         ...proxyConfig,
       }),
       signal: controller.signal,
@@ -1212,7 +1216,7 @@ serve(async (req: Request) => {
                   message: `${displayName} blocked — falling back to ${fallback.label}`,
                 }));
 
-                const topic = task.extract?.fields?.[0] || "the topic";
+                const topic = query; // Use the original user query, not field names
                 const fallbackTask: TinyFishTask = {
                   platform: fallback.platform,
                   url_or_query: fallback.urlTemplate(topic),
