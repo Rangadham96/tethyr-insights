@@ -87,10 +87,10 @@ google_play_store — USE WHEN: same as apple_app_store.
 chrome_web_store — USE WHEN: browser extensions, DEVELOPER_TOOLS.
 
 ── PROFESSIONAL REVIEW PLATFORMS ──
-g2 — USE WHEN: B2B_SAAS, ENTERPRISE_BUYERS. SKIP WHEN: CONSUMERS_GENERAL.
-capterra — USE WHEN: B2B_SAAS, SMALL_BUSINESS.
+g2 — *** BLOCKED — DO NOT SELECT *** (aggressive CAPTCHA, always fails)
+capterra — *** BLOCKED — DO NOT SELECT *** (aggressive CAPTCHA, always fails)
 trustpilot — USE WHEN: CONSUMERS_GENERAL, FINANCE, SERVICE_BUSINESS. SKIP WHEN: B2B_SAAS.
-glassdoor — USE WHEN: COMPETE intent, understanding company priorities.
+glassdoor — *** BLOCKED — DO NOT SELECT *** (login wall, always fails)
 bbb_complaints — USE WHEN: CONSUMERS_GENERAL, FINANCE, SERVICE_BUSINESS.
 
 ── SOCIAL PLATFORMS ──
@@ -504,12 +504,9 @@ function transformTasks(tasks: TinyFishTask[], _classification: any): TinyFishTa
     }
 
     // Drop blocked platforms that slip through classification
-    if (task.platform === "tiktok_comments") {
-      console.warn("TikTok task slipped through classification, dropping it");
-      continue;
-    }
-    if (task.platform === "facebook_groups_public") {
-      console.warn("Facebook Groups task slipped through classification, dropping it");
+    const BLOCKED_PLATFORMS = new Set(["tiktok_comments", "facebook_groups_public", "g2", "capterra", "glassdoor"]);
+    if (BLOCKED_PLATFORMS.has(task.platform)) {
+      console.warn(`${task.platform} task slipped through classification (blocked), dropping it`);
       continue;
     }
 
@@ -677,6 +674,37 @@ If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
       };
     }
 
+    case "g2":
+    case "capterra":
+    case "glassdoor":
+      // These are CAPTCHA-blocked — fall back to Reddit B2B discussions
+      return {
+        platform: "reddit",
+        label: "Reddit B2B discussions",
+        urlTemplate: (t) => `https://www.reddit.com/search/?q=${encodeURIComponent(t + ' review OR comparison OR alternative')}&sort=relevance&t=year`,
+        goalTemplate: (t) =>
+          `Extract all visible post titles and preview text on this page.
+
+For each item, extract ONLY:
+- post_title (string, e.g. 'HubSpot vs Pipedrive for small teams')
+- preview_text (string, first 200 chars, e.g. 'We switched from...')
+- upvotes (number, e.g. 42)
+- comment_count (number, e.g. 15)
+- subreddit (string, e.g. 'r/smallbusiness')
+
+STOP CONDITIONS:
+- Stop after 15 items or all visible, whichever is fewer
+- Do NOT scroll more than 3 times
+- Do NOT click into any posts
+
+EDGE CASES:
+- If cookie banner appears, close it first
+- If login wall appears, return empty array
+
+Return JSON: {'items': [{'post_title': '...', 'preview_text': '...', 'upvotes': 0, 'comment_count': 0, 'subreddit': '...'}]}
+If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
+      };
+
     default:
       return null;
   }
@@ -685,7 +713,7 @@ If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
 function isBlockingError(result: TinyFishResult): boolean {
   if (!result.success) {
     const err = (result.error || "").toLowerCase();
-    if (err.includes("403") || err.includes("429") || err.includes("blocked") || err.includes("forbidden") || err.includes("rate limit")) {
+    if (err.includes("403") || err.includes("429") || err.includes("blocked") || err.includes("forbidden") || err.includes("rate limit") || err.includes("captcha")) {
       return true;
     }
   }
@@ -715,12 +743,12 @@ function getTimeout(_platform: string): number {
 // ═══════════════════════════════════════════════
 
 const STEALTH_PLATFORMS = new Set([
-  "g2", "capterra", "trustpilot", "glassdoor",
+  "trustpilot",
   "amazon_reviews", "apple_app_store", "google_play_store",
 ]);
 
 const PROXY_PLATFORMS = new Set([
-  "g2", "capterra", "trustpilot", "glassdoor", "amazon_reviews",
+  "trustpilot", "amazon_reviews",
 ]);
 
 // ═══════════════════════════════════════════════
@@ -853,6 +881,23 @@ async function runTinyFishTask(
           const event = JSON.parse(jsonStr);
 
           if (event.type === "PROGRESS" && event.purpose) {
+            const purpose = (event.purpose || "").toLowerCase();
+            // CAPTCHA early-exit: only abort on CONFIRMED captcha encounters, not checking steps
+            // TinyFish often says "Verify if the page is blocked by a CAPTCHA" as a routine check — that's NOT a captcha hit
+            const isCaptchaHit = (
+              (purpose.includes("captcha") && !purpose.includes("verify if") && !purpose.includes("check if") && !purpose.includes("check for")) ||
+              purpose.includes("solve captcha") ||
+              purpose.includes("captcha appeared") ||
+              purpose.includes("captcha is blocking") ||
+              purpose.includes("blocked by captcha") ||
+              purpose.includes("verify you are human") ||
+              purpose.includes("i'm not a robot")
+            );
+            if (isCaptchaHit) {
+              send(logEvent(`${task.platform}: CAPTCHA confirmed — aborting early`, "error"));
+              controller.abort();
+              return { platform: task.platform, success: false, data: null, error: "CAPTCHA detected" };
+            }
             send(logEvent(`${task.platform}: ${event.purpose}`, "searching"));
           } else if (event.type === "COMPLETE" && event.status === "COMPLETED") {
             resultData = event.resultJson || event.result || null;
