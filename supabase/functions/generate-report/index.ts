@@ -76,9 +76,9 @@ MASTER SOURCE LIST — USE WHEN / SKIP WHEN only:
 reddit — USE WHEN: almost always. SKIP WHEN: never.
 hackernews — USE WHEN: DEVELOPER_TOOLS, B2B_SAAS, FOUNDERS_PMS. SKIP WHEN: HEALTH_WELLNESS, CONSUMERS_GENERAL.
 indiehackers — USE WHEN: FOUNDERS_PMS, B2B_SAAS, VALIDATE/GAPS. SKIP WHEN: HEALTH_WELLNESS, CONSUMERS_GENERAL.
-producthunt — USE WHEN: B2C_APP, B2B_SAAS, DEVELOPER_TOOLS. SKIP WHEN: PHYSICAL_PRODUCT, SERVICE_BUSINESS.
+producthunt — USE WHEN: B2C_APP, B2B_SAAS, DEVELOPER_TOOLS. SKIP WHEN: PHYSICAL_PRODUCT, SERVICE_BUSINESS. URL MUST USE: https://www.google.com/search?q=site:producthunt.com+[query] (do NOT use producthunt.com directly).
 quora — USE WHEN: CONSUMERS_GENERAL, EDUCATION, HEALTH_WELLNESS. SKIP WHEN: DEVELOPER_TOOLS.
-alternativeto — USE WHEN: anytime a named competitor exists. NEVER SKIP if competitor names in query.
+alternativeto — *** DEPRIORITIZED — HIGH TIMEOUT RATE ***. Instead, add a second reddit task with "[competitor] alternatives OR vs" query for competitor intelligence.
 discord_public — USE WHEN: DEVELOPER_TOOLS, CREATOR_TOOLS, GAMING.
 
 ── APP STORES ──
@@ -475,7 +475,7 @@ const PLATFORM_BASE_URLS: Record<string, string> = {
   youtube_comments: "https://www.google.com",
   stackoverflow: "https://stackoverflow.com",
   quora: "https://www.quora.com",
-  producthunt: "https://www.producthunt.com",
+  producthunt: "https://www.google.com/search?q=site:producthunt.com",
   indie_hackers: "https://www.indiehackers.com",
   patient_communities: "https://healthunlocked.com",
   academic_papers: "https://scholar.google.com",
@@ -734,11 +734,19 @@ function isBlockingError(result: TinyFishResult): boolean {
 }
 
 
-// Change 7: Increased from 120s to 180s
 const TINYFISH_TIMEOUT_MS = 180_000;
 
-function getTimeout(_platform: string): number {
-  return TINYFISH_TIMEOUT_MS;
+const PLATFORM_TIMEOUTS: Record<string, number> = {
+  reddit: 180_000,
+  hackernews: 120_000,
+  producthunt: 120_000,   // Google site-search is fast
+  indiehackers: 150_000,
+  quora: 120_000,
+  alternativeto: 120_000, // deprioritized, short leash
+};
+
+function getTimeout(platform: string): number {
+  return PLATFORM_TIMEOUTS[platform] || TINYFISH_TIMEOUT_MS;
 }
 
 // ═══════════════════════════════════════════════
@@ -748,12 +756,14 @@ function getTimeout(_platform: string): number {
 const STEALTH_PLATFORMS = new Set([
   "trustpilot",
   "amazon_reviews", "apple_app_store", "google_play_store",
-  "reddit", "alternativeto", "producthunt", "indiehackers",
+  "reddit", "alternativeto", "indiehackers",
+  // producthunt removed — now routed through Google site-search
 ]);
 
 const PROXY_PLATFORMS = new Set([
   "trustpilot", "amazon_reviews",
-  "reddit", "alternativeto", "producthunt",
+  "reddit", "alternativeto",
+  // producthunt removed — Google doesn't need proxy
 ]);
 
 // ═══════════════════════════════════════════════
@@ -922,8 +932,19 @@ async function runTinyFishTask(
     }
 
     if (resultData) {
-      const itemCount = Array.isArray(resultData) ? resultData.length : 1;
+      let itemCount = 1;
+      if (Array.isArray(resultData)) {
+        itemCount = resultData.length;
+      } else if (resultData && typeof resultData === "object") {
+        const rd = resultData as Record<string, unknown>;
+        if (Array.isArray(rd.items)) itemCount = rd.items.length;
+        else if (Array.isArray(rd.data)) itemCount = rd.data.length;
+        else if (Array.isArray(rd.results)) itemCount = (rd.results as unknown[]).length;
+        else if (Array.isArray(rd.posts)) itemCount = (rd.posts as unknown[]).length;
+        else if (Array.isArray(rd.stories)) itemCount = (rd.stories as unknown[]).length;
+      }
       console.info(`[TASK RESULT] ${task.platform} | SUCCESS | ${itemCount} items`);
+      console.info(`[TASK DATA SHAPE] ${task.platform} | ${JSON.stringify(resultData).substring(0, 500)}`);
       return { platform: task.platform, success: true, data: resultData };
     }
     console.info(`[TASK RESULT] ${task.platform} | FAIL | No result data in TinyFish response (stream ended without COMPLETE event)`);
