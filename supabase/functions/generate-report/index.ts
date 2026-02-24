@@ -1426,6 +1426,13 @@ serve(async (req: Request) => {
           sources_skipped: sourcesSkipped,
         }));
 
+        // ── DEBUG: Log exact URLs and goals for each task ──
+        for (const t of tasks) {
+          const profile = STEALTH_PLATFORMS.has(t.platform) ? "stealth" : "lite";
+          const proxy = PROXY_PLATFORMS.has(t.platform) ? "proxy:US" : "direct";
+          console.log(`[TASK DEBUG] ${t.platform} | profile=${profile} | ${proxy} | url=${t.url_or_query} | goal=${t.goal}`);
+          send(logEvent(`🔍 ${t.platform}: ${profile}/${proxy} → ${t.url_or_query.substring(0, 120)}`, "info"));
+        }
         send(logEvent(`Dispatching ${tasks.length} TinyFish agents (max ${MAX_CONCURRENT_AGENTS} concurrent, lite/stealth per platform)...`, "info"));
         send(sseEvent("phase_update", { phase: "scraping", detail: `0 of ${tasks.length} sources complete` }));
 
