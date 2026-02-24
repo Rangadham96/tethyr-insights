@@ -7,6 +7,7 @@ import type { ReportData, UserTier, Verdict } from "@/types/report";
 interface ReportPanelProps {
   reportData: ReportData;
   userTier: UserTier;
+  onNewReport?: () => void;
 }
 
 const VERDICT_CONFIG: Record<Verdict, { bg: string; border: string; textColor: string; icon: string; fallback: string }> = {
@@ -40,7 +41,7 @@ const VERDICT_CONFIG: Record<Verdict, { bg: string; border: string; textColor: s
   },
 };
 
-const ReportPanel = ({ reportData, userTier }: ReportPanelProps) => {
+const ReportPanel = ({ reportData, userTier, onNewReport }: ReportPanelProps) => {
   const { meta, problem_validation, feature_gaps, competitor_weaknesses, audience_language, build_recommendations } = reportData;
   const vc = VERDICT_CONFIG[meta.verdict];
 
@@ -257,7 +258,10 @@ const ReportPanel = ({ reportData, userTier }: ReportPanelProps) => {
             >
               Export PDF
             </button>
-            <button className="border-none bg-ink text-paper px-3.5 py-[7px] font-mono text-[8.5px] tracking-[0.1em] uppercase cursor-pointer rounded-sm transition-colors hover:bg-red">
+            <button
+              onClick={onNewReport}
+              className="border-none bg-ink text-paper px-3.5 py-[7px] font-mono text-[8.5px] tracking-[0.1em] uppercase cursor-pointer rounded-sm transition-colors hover:bg-red"
+            >
               New Report →
             </button>
           </div>

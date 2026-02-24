@@ -335,7 +335,7 @@ const SearchInput = ({
           <span className="w-px h-[10px] bg-ink/10" />
           <span>First report free</span>
           <span className="w-px h-[10px] bg-ink/10" />
-          <span>60–90 seconds</span>
+          <span>3–5 minutes</span>
         </div>
       )}
     </div>
