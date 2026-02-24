@@ -855,7 +855,7 @@ async function runTinyFishTask(
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`TinyFish error for ${task.platform}:`, response.status, errorText);
+      console.info(`[TASK RESULT] ${task.platform} | HTTP_ERROR | ${response.status} | ${errorText.slice(0, 200)}`);
       return { platform: task.platform, success: false, data: null, error: `HTTP ${response.status}` };
     }
 
@@ -898,6 +898,7 @@ async function runTinyFishTask(
               purpose.includes("i'm not a robot")
             );
             if (isCaptchaHit) {
+              console.info(`[TASK RESULT] ${task.platform} | CAPTCHA | ${event.purpose}`);
               send(logEvent(`${task.platform}: CAPTCHA confirmed — aborting early`, "error"));
               controller.abort();
               return { platform: task.platform, success: false, data: null, error: "CAPTCHA detected" };
@@ -906,6 +907,7 @@ async function runTinyFishTask(
           } else if (event.type === "COMPLETE" && event.status === "COMPLETED") {
             resultData = event.resultJson || event.result || null;
           } else if (event.type === "COMPLETE" && event.status !== "COMPLETED") {
+            console.info(`[TASK RESULT] ${task.platform} | TASK_FAILED | status=${event.status} | ${JSON.stringify(event).slice(0, 300)}`);
             return {
               platform: task.platform,
               success: false,
@@ -920,15 +922,19 @@ async function runTinyFishTask(
     }
 
     if (resultData) {
+      const itemCount = Array.isArray(resultData) ? resultData.length : 1;
+      console.info(`[TASK RESULT] ${task.platform} | SUCCESS | ${itemCount} items`);
       return { platform: task.platform, success: true, data: resultData };
     }
+    console.info(`[TASK RESULT] ${task.platform} | FAIL | No result data in TinyFish response (stream ended without COMPLETE event)`);
     return { platform: task.platform, success: false, data: null, error: "No result data in TinyFish response" };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unknown error";
     if (msg.includes("abort")) {
+      console.info(`[TASK RESULT] ${task.platform} | ABORT | ${msg}`);
       return { platform: task.platform, success: false, data: null, error: "Cancelled (deadline reached)" };
     }
-    console.error(`TinyFish task failed for ${task.platform}:`, msg);
+    console.info(`[TASK RESULT] ${task.platform} | ERROR | ${msg}`);
     return { platform: task.platform, success: false, data: null, error: msg };
   } finally {
     clearTimeout(timeout);
