@@ -535,37 +535,34 @@ Rules:
 
 CRITICAL — WRITING EFFECTIVE GOALS FOR TINYFISH:
 
-TinyFish is a browser-automation agent that works best with ONE PAGE, ONE EXTRACTION.
-The key principle: PRE-BUILD THE URL so TinyFish lands directly on the data page.
-The goal should ONLY describe what to EXTRACT from the page, NOT how to navigate there.
+TinyFish is a browser-automation agent. It works best when given a SINGLE PAGE and told to EXTRACT WHAT IS VISIBLE.
 
-URL RULES:
-- url_or_query MUST be a fully-formed URL with search/filter parameters already embedded
+ABSOLUTE RULES:
+1. The url_or_query MUST be a fully-formed URL that lands DIRECTLY on the data page (search results, review listing, etc.)
+2. The goal MUST be ONE sentence: "Extract all visible [thing] on this page. Return as JSON."
+3. NEVER ask TinyFish to click into threads, open individual posts, navigate between pages, or filter/sort on the page.
+4. NEVER say "first 5 posts", "top 10 comments", "20 reviews" — just say "all visible" and let max_items in extract handle the limit.
+5. NEVER use words: navigate, click, search, sort, filter, scroll, find, go to, open, visit, select.
+
+URL EXAMPLES (search params pre-embedded):
 - Reddit: https://www.reddit.com/r/SaaS/search/?q=CRM+frustrations&sort=top&t=year
-- G2: https://www.g2.com/products/asana/reviews?order=most_recent&star_rating=1-2
-- HN: https://hn.algolia.com/?q=CRM+frustrations&type=story&sort=byPopularity&dateRange=pastYear
-- Capterra: https://www.capterra.com/p/12345/ProductName/reviews/?sort=most_recent
-- Stack Overflow: https://stackoverflow.com/search?q=CRM+integration+issues&tab=votes
-- Quora: https://www.quora.com/search?q=CRM+frustrations
-- Amazon: https://www.amazon.com/product-reviews/ASIN/?filterByStar=one_star
+- G2: https://www.g2.com/products/asana/reviews?segment=small-business
+- HN: https://hn.algolia.com/?q=CRM&type=story&sort=byPopularity
+- Capterra: https://www.capterra.com/p/12345/ProductName/reviews/
+- ProductHunt: https://www.producthunt.com/products/folk/reviews
 
-GOAL RULES:
-- 1-2 sentences MAXIMUM
-- ONLY describe what to extract from the page that loads
-- Never say "navigate to", "search for", "click on", "sort by" — the URL already handles that
+GOOD GOALS (single page, extract visible):
+  goal: "Extract all visible post titles and preview text on this page. Return as JSON."
+  goal: "Extract all visible review texts, star ratings, and reviewer roles on this page. Return as JSON."
+  goal: "Extract all visible thread titles and scores on this page. Return as JSON."
 
-GOOD GOALS (extraction-only):
-  url: "https://www.reddit.com/r/SaaS/search/?q=CRM+frustrations&sort=top&t=year"
-  goal: "Extract titles and top 3 comments from the first 5 posts on this page. Return as JSON."
+BAD GOALS (will timeout — DO NOT USE):
+  "Extract top 3 comments from the first 5 posts" ← navigates into multiple posts
+  "For the first 20 reviews from small-business users" ← filtering on page
+  "Find 5 relevant discussion posts and extract comments" ← multi-page navigation
+  "Extract the thread title and top 10 comments" ← requires clicking into thread
 
-  url: "https://www.g2.com/products/asana/reviews?star_rating=1-2"
-  goal: "Extract the first 10 review texts, reviewer roles, and star ratings visible on this page. Return as JSON."
-
-BAD GOALS (navigation instructions — will timeout):
-  "Navigate to reddit.com. Click search. Type query. Click filters. Select Top..."
-  "Go to g2.com, search for Asana, click reviews tab, filter by 1 star..."
-
-Keep each goal to 1-2 sentences. State ONLY: what to extract, how many items, what format.
+The goal is ALWAYS: "Extract all visible [X] on this page. Return as JSON."
 
 
 
