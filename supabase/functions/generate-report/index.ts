@@ -28,549 +28,172 @@ function buildClassificationPrompt(query: string, intents: string[]): string {
 a founder or PM's question into precise internet search tasks, 
 selecting the best sources for that specific type of query.
 
-
-
-
 THE QUERY: "${query}"
 WHAT THEY WANT TO KNOW: "${intents.join(", ")}"
-
-
-
 
 ═══════════════════════════════════════════════
 STEP 1 — CLASSIFY THE QUERY
 ═══════════════════════════════════════════════
 
-
-
-
 Before selecting any sources, classify this query across 
 four dimensions. Return your classification as part of the 
 JSON output.
 
-
-
-
 MARKET TYPE — which best describes this?
-- B2B_SAAS: software sold to businesses, bought by a team 
-  or company
-- B2C_APP: consumer-facing app, individual buys or downloads
-- MARKETPLACE: connects two sides (buyers/sellers, 
-  creators/audience)
-- PHYSICAL_PRODUCT: hardware, consumer goods, physical item
-- SERVICE_BUSINESS: agency, consulting, professional service
-- HEALTH_WELLNESS: physical or mental health, medical, 
-  fitness, nutrition
+- B2B_SAAS: software sold to businesses
+- B2C_APP: consumer-facing app
+- MARKETPLACE: connects two sides
+- PHYSICAL_PRODUCT: hardware, consumer goods
+- SERVICE_BUSINESS: agency, consulting
+- HEALTH_WELLNESS: physical or mental health, medical, fitness
 - FINANCE: payments, investing, insurance, banking
-- CREATOR_TOOLS: content creation, media, creative software
+- CREATOR_TOOLS: content creation, media
 - DEVELOPER_TOOLS: APIs, infrastructure, dev tooling
-- EDUCATION: learning, courses, tutoring, skills
-- UNKNOWN: cannot determine from query
-
-
-
+- EDUCATION: learning, courses, tutoring
+- UNKNOWN: cannot determine
 
 AUDIENCE TYPE — who is the end user?
-- FOUNDERS_PMS: startup founders, product managers, operators
-- DEVELOPERS: software engineers, technical builders
-- ENTERPRISE_BUYERS: procurement, IT, C-suite
-- CONSUMERS_GENERAL: broad consumer audience, no specific 
-  profession
-- PROFESSIONALS: doctors, lawyers, accountants, teachers, 
-  a specific professional category — name it
-- CREATORS: YouTubers, writers, podcasters, artists
-- STUDENTS: learners in formal or informal education
-- SMALL_BUSINESS: SMB owners, local business operators
+- FOUNDERS_PMS / DEVELOPERS / ENTERPRISE_BUYERS
+- CONSUMERS_GENERAL / PROFESSIONALS / CREATORS
+- STUDENTS / SMALL_BUSINESS
 
+PROBLEM MATURITY:
+- ESTABLISHED / EMERGING / NOVEL
 
-
-
-PROBLEM MATURITY — how established is this problem space?
-- ESTABLISHED: well-known problem, many existing solutions, 
-  signal will be plentiful
-- EMERGING: problem is real but solutions are new, signal 
-  will be scattered  
-- NOVEL: problem may not be widely articulated yet, signal 
-  will require inference from adjacent complaints
-
-
-
-
-QUERY INTENT — what is the primary thing they need?
-- VALIDATE: is this problem real and big enough?
-- GAPS: what is missing from existing solutions?
-- COMPETE: what are competitors failing at?
-- LANGUAGE: how do people describe this problem?
-- BUILD: what should be built first?
-- ALL: they want the full picture
-
-
-
+QUERY INTENT:
+- VALIDATE / GAPS / COMPETE / LANGUAGE / BUILD / ALL
 
 ═══════════════════════════════════════════════
-STEP 2 — SELECT SOURCES USING THIS ROUTING LOGIC
+STEP 2 — SELECT SOURCES (3-5 ONLY)
 ═══════════════════════════════════════════════
 
+Select exactly 3-5 sources from the list below. NEVER more than 5.
+Fewer sources = faster, more reliable results.
 
-
-
-Using your classification above, select 3-15 sources from the 
-master list below depending on query complexity:
-- Simple/focused query (e.g. "best CRM for plumbers"): 3-5 sources
-- Medium query (e.g. "project management tool gaps"): 6-8 sources
-- Broad research (e.g. "mental health app market"): 10-15 sources
-Every source selection must have a reason. 
-Do not default to the same sources for every query.
-
-
-
-
-MASTER SOURCE LIST WITH ROUTING RULES:
-
-
-
+MASTER SOURCE LIST — USE WHEN / SKIP WHEN only:
 
 ── DISCUSSION & COMMUNITY ──
-
-
-
-
-reddit
-  USE WHEN: almost always — but select subreddits specifically
-  B2B_SAAS → r/SaaS, r/startups, r/ProductManagement, 
-    r/Entrepreneur
-  B2C_APP → r/apps, r/productivity, plus topic-specific 
-    subreddit
-  HEALTH_WELLNESS → r/mentalhealth, r/anxiety, r/depression, 
-    r/therapy, r/psychology, r/ADHD — pick the most relevant
-  FINANCE → r/personalfinance, r/investing, r/financialplanning
-  DEVELOPER_TOOLS → r/programming, r/webdev, r/devops, 
-    r/ExperiencedDevs
-  EDUCATION → r/learnprogramming, r/Teachers, r/GradSchool
-  CREATOR_TOOLS → r/YoutubeCreators, r/podcasting, r/writing
-  SMALL_BUSINESS → r/smallbusiness, r/Entrepreneur, 
-    r/ecommerce
-  ALWAYS include r/[topic] where topic matches the domain
-
-
-
-
-hackernews
-  USE WHEN: DEVELOPER_TOOLS, B2B_SAAS, FOUNDERS_PMS, 
-    EMERGING problems, NOVEL problems
-  SKIP WHEN: HEALTH_WELLNESS, CONSUMERS_GENERAL, 
-    PHYSICAL_PRODUCT — signal will be weak
-  Search: site:news.ycombinator.com "[topic]" — extract 
-    Ask HN and Show HN threads specifically
-
-
-
-
-indiehackers
-  USE WHEN: FOUNDERS_PMS, B2B_SAAS, CREATOR_TOOLS, 
-    VALIDATE intent, GAPS intent
-  SKIP WHEN: HEALTH_WELLNESS, CONSUMERS_GENERAL, 
-    PHYSICAL_PRODUCT
-  Particularly valuable for "what did you try that failed" 
-    signal
-
-
-
-
-producthunt
-  USE WHEN: B2C_APP, B2B_SAAS, DEVELOPER_TOOLS, 
-    CREATOR_TOOLS — always check comment threads not just 
-    upvotes
-  SKIP WHEN: PHYSICAL_PRODUCT, SERVICE_BUSINESS, 
-    HEALTH_WELLNESS
-  Look at: comments on competitor products, 
-    "alternatives to X" pages, and products that launched 
-    then went quiet
-
-
-
-
-quora
-  USE WHEN: CONSUMERS_GENERAL, EDUCATION, HEALTH_WELLNESS, 
-    FINANCE, PROFESSIONALS — people ask Quora questions 
-    they are embarrassed to Google
-  SKIP WHEN: DEVELOPER_TOOLS, B2B_SAAS — developers 
-    do not use Quora
-  Extract: question text, top answer text, 
-    "X people found this helpful" counts
-
-
-
-
-alternativeto
-  USE WHEN: anytime there is a named competitor to investigate
-  NEVER SKIP IF competitor names appear in the query
-  This is where people who have already left a product 
-    explain why — extremely high signal for GAPS intent
-
-
-
-
-discord_public
-  USE WHEN: DEVELOPER_TOOLS, CREATOR_TOOLS, GAMING, 
-    CRYPTO, any community with an active Discord
-  Method: search "[topic] discord" — find public invite 
-    links, browse public channels
-
-
-
+reddit — USE WHEN: almost always. SKIP WHEN: never.
+hackernews — USE WHEN: DEVELOPER_TOOLS, B2B_SAAS, FOUNDERS_PMS. SKIP WHEN: HEALTH_WELLNESS, CONSUMERS_GENERAL.
+indiehackers — USE WHEN: FOUNDERS_PMS, B2B_SAAS, VALIDATE/GAPS. SKIP WHEN: HEALTH_WELLNESS, CONSUMERS_GENERAL.
+producthunt — USE WHEN: B2C_APP, B2B_SAAS, DEVELOPER_TOOLS. SKIP WHEN: PHYSICAL_PRODUCT, SERVICE_BUSINESS.
+quora — USE WHEN: CONSUMERS_GENERAL, EDUCATION, HEALTH_WELLNESS. SKIP WHEN: DEVELOPER_TOOLS.
+alternativeto — USE WHEN: anytime a named competitor exists. NEVER SKIP if competitor names in query.
+discord_public — USE WHEN: DEVELOPER_TOOLS, CREATOR_TOOLS, GAMING.
 
 ── APP STORES ──
-
-
-
-
-apple_app_store
-  USE WHEN: any B2C_APP, HEALTH_WELLNESS, EDUCATION, 
-    FITNESS, FINANCE mobile product
-  ALWAYS include if query involves a product that has 
-    a mobile app competitor
-  IMPORTANT SCRAPING APPROACH: Do NOT scrape apple.com 
-    directly — it blocks bots. Instead use this goal:
-    "Go to apps.apple.com, search for [competitor app name], 
-    navigate to ratings and reviews, extract the 20 most 
-    recent 1 and 2 star reviews including review text, 
-    date, and star rating."
-  The task transformer will route this through Google 
-    search to bypass blocks.
-  Focus: 1-star and 2-star reviews only — these contain 
-    feature requests and unmet needs
-  Extract: review text, star rating, date, 
-    "helpful" vote count
-
-
-
-
-google_play_store
-  USE WHEN: same as apple_app_store
-  Run both in parallel — Android users often have 
-    different complaints than iOS users
-
-
-
-
-chrome_web_store
-  USE WHEN: DEVELOPER_TOOLS, CREATOR_TOOLS, 
-    productivity browser extensions
-  SKIP WHEN: mobile-only products
-
-
-
+apple_app_store — USE WHEN: B2C_APP, HEALTH_WELLNESS, EDUCATION, FINANCE mobile products.
+google_play_store — USE WHEN: same as apple_app_store.
+chrome_web_store — USE WHEN: browser extensions, DEVELOPER_TOOLS.
 
 ── PROFESSIONAL REVIEW PLATFORMS ──
-
-
-
-
-g2
-  USE WHEN: B2B_SAAS always, ENTERPRISE_BUYERS always
-  SKIP WHEN: CONSUMERS_GENERAL, HEALTH_WELLNESS 
-    (consumers do not review on G2)
-  Extract: "What do you dislike?" field specifically — 
-    this is the highest-signal field on G2
-  Also extract: "What problems is the product solving 
-    for you?" field
-
-
-
-
-capterra
-  USE WHEN: B2B_SAAS, SMALL_BUSINESS, ENTERPRISE_BUYERS
-  Particularly strong for: HR tools, accounting software, 
-    project management, marketing tools
-
-
-
-
-trustpilot
-  USE WHEN: CONSUMERS_GENERAL, FINANCE, E_COMMERCE, 
-    SERVICE_BUSINESS
-  SKIP WHEN: B2B_SAAS, DEVELOPER_TOOLS
-
-
-
-
-glassdoor
-  USE WHEN: when the query involves understanding a 
-    company's internal priorities or product direction
-  Employee reviews reveal what a company is struggling 
-    to build internally — useful for COMPETE intent
-
-
-
-
-bbb_complaints
-  USE WHEN: CONSUMERS_GENERAL, FINANCE, 
-    SERVICE_BUSINESS, HEALTH_WELLNESS
-  BBB complaints are written by people who are genuinely 
-    angry and describe product failures in detail
-  Underused by competitors — high signal
-
-
-
+g2 — USE WHEN: B2B_SAAS, ENTERPRISE_BUYERS. SKIP WHEN: CONSUMERS_GENERAL.
+capterra — USE WHEN: B2B_SAAS, SMALL_BUSINESS.
+trustpilot — USE WHEN: CONSUMERS_GENERAL, FINANCE, SERVICE_BUSINESS. SKIP WHEN: B2B_SAAS.
+glassdoor — USE WHEN: COMPETE intent, understanding company priorities.
+bbb_complaints — USE WHEN: CONSUMERS_GENERAL, FINANCE, SERVICE_BUSINESS.
 
 ── SOCIAL PLATFORMS ──
-
-
-
-
-youtube_comments
-  USE WHEN: HEALTH_WELLNESS always, CREATOR_TOOLS, 
-    EDUCATION, CONSUMERS_GENERAL, B2C_APP
-  IMPORTANT SCRAPING APPROACH: Do NOT use youtube.com 
-    directly — it blocks bots aggressively. Instead 
-    set url_or_query to "https://www.google.com" and 
-    use this goal pattern:
-    "Go to google.com and search for '[topic] review 
-    site:youtube.com', click the first 3 results, 
-    on each YouTube page scroll to the comments section 
-    and extract the top 20 comments sorted by 
-    Top Comments."
-  This indirect approach via Google bypasses YouTube 
-    bot detection.
-  SKIP WHEN: DEVELOPER_TOOLS, B2B_SAAS — 
-    low signal on YouTube
-
-
-
-
-twitter_x
-  USE WHEN: EMERGING problems, real-time reactions, 
-    COMPETE intent for recent competitor launches
-  Search: competitor @handle complaints, 
-    "[topic] frustrated", "[topic] wish there was"
-  SKIP WHEN: ESTABLISHED problems — noise to signal 
-    ratio is too low for well-covered topics
-
-
-
-
-facebook_groups_public
-  *** BLOCKED — DO NOT SELECT ***
-  Facebook requires login and blocks all scraping. 
-  Never select facebook_groups_public as a source. 
-  Instead substitute these alternatives automatically:
-  - HEALTH_WELLNESS → use patient_communities 
-    (HealthUnlocked.com, PatientsLikeMe.com) — public, 
-    unblocked, more honest health discussions
-  - SMALL_BUSINESS, CONSUMERS_GENERAL → use Reddit 
-    small business communities and Quora instead
-  Always list facebook_groups_public in routing_skipped 
-    with reason "Platform requires login and blocks 
-    scraping; substituted with [alternative] for 
-    equivalent audience signal."
-
-
-
-
-linkedin_comments
-  USE WHEN: B2B_SAAS, ENTERPRISE_BUYERS, PROFESSIONALS,
-    COMPETE intent
-  Search: posts from executives at competitor companies, 
-    find disagreements and criticisms in comments
-  Also search: "[problem] LinkedIn" to find 
-    professional discussions
-
-
-
-
-tiktok_comments
-  *** BLOCKED — DO NOT SELECT ***
-  TikTok blocks virtually all scraping. Never select 
-    tiktok_comments as a source. When the query would 
-    have qualified for TikTok (CONSUMERS_GENERAL, 
-    HEALTH_WELLNESS, CREATOR_TOOLS targeting under-35), 
-    use Reddit mobile communities and Quora instead — 
-    same demographic, not blocked. Always list 
-    tiktok_comments in routing_skipped with reason 
-    "Platform blocks automated access; substituted 
-    with Reddit and Quora for equivalent audience signal."
-
-
-
-
-── FORUMS & NICHE COMMUNITIES ──
-
-
-
-
-discourse_forums
-  USE WHEN: whenever a competitor product has a 
-    public Discourse forum (check: community.[product].com 
-    or forum.[product].com)
-  This is where the most engaged users discuss 
-    feature requests and frustrations
-  ALWAYS check if named competitors have Discourse forums
-
-
-
-
-stackoverflow_stackexchange
-  USE WHEN: DEVELOPER_TOOLS always, also any technical 
-    product where users hit implementation problems
-  Stack Exchange network has 170+ topic-specific sites — 
-    select the relevant one
-  SKIP WHEN: CONSUMERS_GENERAL, HEALTH_WELLNESS, 
-    PHYSICAL_PRODUCT
-
-
-
-
-patient_communities
-  USE WHEN: HEALTH_WELLNESS always — non-negotiable
-  Sources: HealthUnlocked, PatientsLikeMe, 
-    Inspire.com, Ben's Friends, WebMD community forums
-  SKIP WHEN: any non-health query
-  These communities contain the most honest, 
-    detailed health experience descriptions on the internet
-
-
-
-
-── MARKET INTELLIGENCE SOURCES ──
-
-
-
-
-job_postings
-  USE WHEN: COMPETE intent always, 
-    VALIDATE intent for ESTABLISHED markets
-  Search: competitor company job postings on LinkedIn Jobs, 
-    Indeed, Greenhouse, Lever
-  What to look for: new engineering roles suggesting 
-    a feature build, job descriptions describing 
-    problems they need to solve
-  "We are looking for someone to help us solve X" 
-    in a job description IS market signal
-
-
-
-
-amazon_reviews
-  USE WHEN: PHYSICAL_PRODUCT always, also 
-    CONSUMERS_GENERAL for any product category 
-    that has physical equivalents
-  Focus: "Critical reviews" filter — 
-    1 and 2 star only
-  Also extract: "Customers ask" Q&A section — 
-    unresolved questions are unmet needs
-
-
-
-
-podcast_transcripts
-  USE WHEN: HEALTH_WELLNESS, EDUCATION, FINANCE, 
-    CREATOR_TOOLS, any market where thought leaders 
-    discuss problems on podcasts
-  Search: ListenNotes.com for "[topic] podcast episodes"
-  Transcripts available via Spotify and Apple Podcasts 
-    for many shows
-  SKIP WHEN: DEVELOPER_TOOLS, B2B_SAAS — 
-    lower signal, harder to extract
-
-
-
-
-academic_papers
-  USE WHEN: HEALTH_WELLNESS always, EDUCATION, 
-    NOVEL problems where scientific research 
-    validates the problem exists
-  Search: Google Scholar, Semantic Scholar, PubMed 
-    for "[problem]" — abstract and citation count 
-    indicates problem maturity
-  A problem cited in 500+ papers is validated. 
-    A problem cited in 5 is emerging.
-  SKIP WHEN: CONSUMERS_GENERAL, PHYSICAL_PRODUCT, 
-    SMALL_BUSINESS
-
-
-
-
-substack_comments
-  USE WHEN: FINANCE, HEALTH_WELLNESS, CREATOR_TOOLS, 
-    any newsletter-driven audience
-  Search: Substack for topic newsletters, 
-    read comment sections under popular posts
-  Substack commenters are engaged, educated, 
-    and opinionated — high quality signal
-
-
-
-
-indie_review_sites
-  USE WHEN: DEVELOPER_TOOLS, B2B_SAAS, CREATOR_TOOLS
-  Sources: AlternativeTo, Slant.co, 
-    SaaSHub, SourceForge reviews
-  These attract users who have tried multiple 
-    products and are comparing — maximum feature 
-    gap signal
-
-
-
+youtube_comments — USE WHEN: HEALTH_WELLNESS, CREATOR_TOOLS, EDUCATION, CONSUMERS_GENERAL. SKIP WHEN: DEVELOPER_TOOLS.
+twitter_x — USE WHEN: EMERGING problems, real-time reactions, COMPETE intent. SKIP WHEN: ESTABLISHED problems.
+linkedin_comments — USE WHEN: B2B_SAAS, ENTERPRISE_BUYERS, PROFESSIONALS.
+facebook_groups_public — *** BLOCKED — DO NOT SELECT ***
+tiktok_comments — *** BLOCKED — DO NOT SELECT ***
+
+── FORUMS & NICHE ──
+discourse_forums — USE WHEN: competitor has a public Discourse forum.
+stackoverflow_stackexchange — USE WHEN: DEVELOPER_TOOLS, technical products. SKIP WHEN: CONSUMERS_GENERAL.
+patient_communities — USE WHEN: HEALTH_WELLNESS always. Sources: HealthUnlocked, PatientsLikeMe.
+
+── MARKET INTELLIGENCE ──
+job_postings — USE WHEN: COMPETE intent, VALIDATE for ESTABLISHED markets.
+amazon_reviews — USE WHEN: PHYSICAL_PRODUCT, CONSUMERS_GENERAL.
+podcast_transcripts — USE WHEN: HEALTH_WELLNESS, EDUCATION, FINANCE.
+academic_papers — USE WHEN: HEALTH_WELLNESS, NOVEL problems. SKIP WHEN: CONSUMERS_GENERAL.
+substack_comments — USE WHEN: FINANCE, HEALTH_WELLNESS, CREATOR_TOOLS.
+indie_review_sites — USE WHEN: DEVELOPER_TOOLS, B2B_SAAS.
 
 ═══════════════════════════════════════════════
-STEP 3 — GENERATE SEARCH TASKS
+STEP 3 — GENERATE SEARCH TASKS (3-5 TASKS ONLY)
 ═══════════════════════════════════════════════
-
-
-
-
-Now produce 3-15 search tasks as a JSON array, matching the source count guidance above.
-
-FEWER tasks = FASTER results. Only add tasks that will produce unique signal.
-Simple queries need 3-5 tasks. Don't pad with low-value sources.
-
-
-Rules:
-- Every task references a specific URL, subreddit, or named competitor
-- Every extract instruction names exact fields to return
-- Tasks ordered by expected signal strength — highest first
-- No duplicating exact targets
-- Skip sources with no relevant content for this topic
 
 CRITICAL — WRITING EFFECTIVE GOALS FOR TINYFISH:
 
 TinyFish is a browser-automation agent. It works best when given a SINGLE PAGE and told to EXTRACT WHAT IS VISIBLE.
 
-ABSOLUTE RULES:
-1. The url_or_query MUST be a fully-formed URL that lands DIRECTLY on the data page (search results, review listing, etc.)
-2. The goal MUST be ONE sentence: "Extract all visible [thing] on this page. Return as JSON."
-3. NEVER ask TinyFish to click into threads, open individual posts, navigate between pages, or filter/sort on the page.
-4. NEVER say "first 5 posts", "top 10 comments", "20 reviews" — just say "all visible" and let max_items in extract handle the limit.
-5. NEVER use words: navigate, click, search, sort, filter, scroll, find, go to, open, visit, select.
+ABSOLUTE RULES FOR EVERY GOAL:
 
-URL EXAMPLES (search params pre-embedded):
-- Reddit: https://www.reddit.com/r/SaaS/search/?q=CRM+frustrations&sort=top&t=year
-- G2: https://www.g2.com/products/asana/reviews?segment=small-business
-- HN: https://hn.algolia.com/?q=CRM&type=story&sort=byPopularity
-- Capterra: https://www.capterra.com/p/12345/ProductName/reviews/
-- ProductHunt: https://www.producthunt.com/products/folk/reviews
+1. The url_or_query MUST be a fully-formed URL that lands DIRECTLY on the data page.
+   URL EXAMPLES (search params pre-embedded):
+   - Reddit: https://www.reddit.com/r/SaaS/search/?q=CRM+frustrations&sort=top&t=year
+   - G2: https://www.g2.com/products/asana/reviews?segment=small-business
+   - HN: https://hn.algolia.com/?q=CRM&type=story&sort=byPopularity
+   - Capterra: https://www.capterra.com/p/12345/ProductName/reviews/
+   - ProductHunt: https://www.producthunt.com/products/folk/reviews
+   - Google Play: https://play.google.com/store/search?q=meditation+app&c=apps
+   - Apple (via Google): https://www.google.com/search?q=site:apps.apple.com+meditation+app+reviews
+   - YouTube (via Google): https://www.google.com/search?q=site:youtube.com+meditation+app+review
+   - Quora: https://www.quora.com/search?q=best+CRM+for+small+teams
+   - HealthUnlocked: https://healthunlocked.com/search/anxiety+treatment
+   - AlternativeTo: https://alternativeto.net/software/notion/
 
-GOOD GOALS (single page, extract visible):
-  goal: "Extract all visible post titles and preview text on this page. Return as JSON."
-  goal: "Extract all visible review texts, star ratings, and reviewer roles on this page. Return as JSON."
-  goal: "Extract all visible thread titles and scores on this page. Return as JSON."
+2. The goal MUST follow this EXACT structure:
+
+   "Extract all visible [THING] on this page.
+
+   For each item, extract ONLY these fields:
+   - field_name_1 (type, e.g. 'Example value')
+   - field_name_2 (type, e.g. 'Example value')
+
+   STOP CONDITIONS:
+   - Stop after extracting [max_items] items OR all visible items, whichever is fewer
+   - Do NOT scroll more than 3 times
+   - Do NOT click pagination, 'Load More', or navigate to other pages
+
+   EDGE CASES:
+   - If a cookie/consent banner appears, close it first
+   - If a login wall appears, return empty array immediately
+   - If CAPTCHA appears, return empty array immediately
+
+   Return JSON: {'items': [{'field_name_1': '...', 'field_name_2': '...'}]}
+   If no data found, return: {'items': [], 'error': 'no_data_visible'}"
+
+3. NEVER use these words in goals: navigate, click, search, sort, filter, scroll, find, go to, open, visit, select, browse.
+4. NEVER ask TinyFish to visit multiple pages, click into threads, or perform multi-step workflows.
+5. NEVER say "first 5 posts", "top 10 comments" — use "all visible" and let max_items handle limits.
+
+GOOD GOAL EXAMPLE:
+  url: "https://www.reddit.com/r/SaaS/search/?q=CRM+frustrations&sort=top&t=year"
+  goal: "Extract all visible post titles and preview text on this page.
+  
+  For each item, extract ONLY:
+  - post_title (string, e.g. 'Why I ditched HubSpot')
+  - preview_text (string, first 200 chars, e.g. 'After 6 months of...')
+  - upvotes (number, e.g. 42)
+  - comment_count (number, e.g. 15)
+  - subreddit (string, e.g. 'r/SaaS')
+
+  STOP CONDITIONS:
+  - Stop after 15 items or all visible, whichever is fewer
+  - Do NOT scroll more than 3 times
+  - Do NOT click into any posts
+
+  EDGE CASES:
+  - If cookie banner appears, close it first
+  - If login wall appears, return empty array
+
+  Return JSON: {'items': [{'post_title': '...', 'preview_text': '...', 'upvotes': 0, 'comment_count': 0, 'subreddit': '...'}]}
+  If no data found, return: {'items': [], 'error': 'no_data_visible'}"
 
 BAD GOALS (will timeout — DO NOT USE):
   "Extract top 3 comments from the first 5 posts" ← navigates into multiple posts
   "For the first 20 reviews from small-business users" ← filtering on page
   "Find 5 relevant discussion posts and extract comments" ← multi-page navigation
-  "Extract the thread title and top 10 comments" ← requires clicking into thread
 
-The goal is ALWAYS: "Extract all visible [X] on this page. Return as JSON."
-
-
-
+6. The extract.fields array MUST list the exact same field names used in the goal text.
+7. The extract.max_items MUST match the number in the goal's STOP CONDITIONS.
 
 Return this exact JSON structure:
-
-
-
 
 {
   "classification": {
@@ -578,43 +201,28 @@ Return this exact JSON structure:
     "audience_type": string,
     "problem_maturity": string,
     "query_intent": string,
-    "routing_rationale": string (2-3 sentences explaining 
-      why you selected these specific sources for 
-      this specific query),
+    "routing_rationale": string (2-3 sentences),
     "routing_skipped": [
-      {
-        "source": string,
-        "reason": string
-      }
+      { "source": string, "reason": string }
     ]
   },
   "tasks": [
     {
       "platform": string,
-      "priority": number (1 = highest signal expected),
-      "url_or_query": string (exact URL or search string),
-      "goal": string (precise plain-English browsing 
-        instruction — specific enough that it cannot 
-        be misinterpreted),
-      "selection_reason": string (one sentence — 
-        why this source for this query),
+      "priority": number (1 = highest),
+      "url_or_query": string (exact URL with search params),
+      "goal": string (following the EXACT structure above),
+      "selection_reason": string,
       "extract": {
-        "fields": [array of exact field names],
-        "max_items": number,
-        "filter": string (any filter to apply — 
-          e.g. "1 and 2 star reviews only", 
-          "posts from past 12 months only", 
-          "top comments with 10+ upvotes only")
+        "fields": [array of field names matching goal],
+        "max_items": number (matching goal STOP CONDITIONS),
+        "filter": string
       }
     }
   ]
 }
 
-
-
-
-Return only valid JSON. No markdown. No explanation 
-outside the JSON structure.`;
+Return only valid JSON. No markdown. No explanation.`;
 }
 
 // ═══════════════════════════════════════════════
@@ -625,35 +233,20 @@ function buildQualityFilterPrompt(platform: string, itemCount: number, query: st
   return `You are a quality controller reviewing raw scraped internet data 
 before it goes into a market intelligence report.
 
-
-
-
 You have received raw data from ${platform} containing 
 ${itemCount} items related to this query: ${query}
 
-
-
-
 Your job:
-
-
-
 
 1. Remove any item that is: off-topic, spam, bot-generated, 
    less than 2 sentences, or does not contain a genuine human 
    opinion or experience
-
-
-
 
 2. Flag the overall signal strength as one of:
    - STRONG: 10+ genuine items with clear emotional signal
    - MODERATE: 5-9 genuine items  
    - WEAK: fewer than 5 genuine items
    - NONE: no relevant signal found
-
-
-
 
 3. For each item that passes, extract:
    - The core complaint, request, or observation in one sentence
@@ -662,14 +255,8 @@ Your job:
    - Date
    - Sentiment: frustrated / requesting / praising / neutral
 
-
-
-
 Return JSON only. If signal is NONE, return 
 {"signal": "NONE", "items": []}
-
-
-
 
 Do not summarise. Do not paraphrase. Preserve exact quotes.`;
 }
@@ -687,31 +274,16 @@ function buildSynthesisPrompt(
   return `You are a senior market analyst producing an intelligence report 
 for a founder or product manager.
 
-
-
-
 You have received filtered signal data from ${platformCount} 
 platforms totalling ${totalItems} items related to this query:
 
-
-
-
 "${query}"
 
-
-
-
 The user wants to understand: ${intents.join(", ")}
-
-
-
 
 Produce a structured intelligence report as a single JSON object 
 matching this exact schema. Do not add fields. Do not remove 
 fields. Every field is required.
-
-
-
 
 {
   "meta": {
@@ -778,9 +350,6 @@ fields. Every field is required.
   ]
 }
 
-
-
-
 Critical rules:
 - verdict_statement must be direct and one sentence
 - Every claim must trace back to actual scraped data
@@ -833,7 +402,6 @@ async function callGemini(
 }
 
 function extractJSON(text: string): unknown {
-  // Try to extract JSON from markdown code blocks or raw text
   const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   const jsonStr = fenceMatch ? fenceMatch[1].trim() : text.trim();
   return JSON.parse(jsonStr);
@@ -881,16 +449,10 @@ interface TinyFishResult {
 }
 
 // ═══════════════════════════════════════════════
-// TIERED TIMEOUTS PER PLATFORM
-// ═══════════════════════════════════════════════
-
-// ═══════════════════════════════════════════════
 // POST-CLASSIFICATION TASK TRANSFORMER
-// Fixes platform-specific scraping approaches for
-// platforms that block direct access
+// Only fixes URLs — does NOT rewrite goals (prompt handles that now)
 // ═══════════════════════════════════════════════
 
-// Base URLs for platforms — used when classification returns a search string instead of a valid URL
 const PLATFORM_BASE_URLS: Record<string, string> = {
   reddit: "https://www.reddit.com",
   hackernews: "https://news.ycombinator.com",
@@ -921,7 +483,7 @@ function isValidUrl(str: string): boolean {
   }
 }
 
-function transformTasks(tasks: TinyFishTask[], classification: any): TinyFishTask[] {
+function transformTasks(tasks: TinyFishTask[], _classification: any): TinyFishTask[] {
   const transformed: TinyFishTask[] = [];
 
   for (const task of tasks) {
@@ -931,41 +493,12 @@ function transformTasks(tasks: TinyFishTask[], classification: any): TinyFishTas
       console.warn(`Invalid URL for ${task.platform}: "${task.url_or_query}" — using ${baseUrl}`);
       task.url_or_query = baseUrl;
     }
-    // APPLE APP STORE: Route through Google search instead of apple.com
-    if (task.platform === "apple_app_store") {
-      // Extract app/topic from the goal to build a Google search
-      const searchTopic = task.url_or_query.includes("apple.com")
-        ? task.goal.match(/search for ['"]?([^'"]+)['"]?/i)?.[1] || task.url_or_query
-        : task.url_or_query;
-      transformed.push({
-        ...task,
-        url_or_query: "https://www.google.com",
-        goal: `Go to google.com and search for '${searchTopic} app store reviews site:apps.apple.com'. Click the first result. On the App Store page, navigate to Ratings & Reviews. Extract the 20 most recent 1-star and 2-star reviews including the full review text, date, and star rating. If the App Store page doesn't load reviews, go back to Google and search for '${searchTopic} app reviews site:appfollow.io' and extract reviews from there instead.`,
-      });
-      continue;
-    }
 
-    // YOUTUBE COMMENTS: Route through Google search instead of youtube.com
-    if (task.platform === "youtube_comments") {
-      const searchTopic = task.url_or_query.includes("youtube.com")
-        ? task.goal.match(/search for ['"]?([^'"]+)['"]?/i)?.[1] || task.url_or_query
-        : task.url_or_query;
-      transformed.push({
-        ...task,
-        url_or_query: "https://www.google.com",
-        goal: `Go to google.com and search for '${searchTopic} review site:youtube.com'. Click the first 3 video results. On each YouTube page, scroll down to the comments section, sort by Top Comments, and extract the top 20 comments including the comment text, author name, like count, and relative date. Return all comments grouped by video title.`,
-      });
-      continue;
-    }
-
-    // TIKTOK: Should have been excluded by prompt, but catch any that slip through
+    // Drop blocked platforms that slip through classification
     if (task.platform === "tiktok_comments") {
-      // Skip entirely — prompt should have excluded this
       console.warn("TikTok task slipped through classification, dropping it");
       continue;
     }
-
-    // FACEBOOK GROUPS: Should have been excluded by prompt, but catch any that slip through
     if (task.platform === "facebook_groups_public") {
       console.warn("Facebook Groups task slipped through classification, dropping it");
       continue;
@@ -978,15 +511,13 @@ function transformTasks(tasks: TinyFishTask[], classification: any): TinyFishTas
 }
 
 // ═══════════════════════════════════════════════
-// FALLBACK SOURCE MAP
-// When a platform is blocked (403, 429, empty),
-// automatically substitute a replacement source
+// FALLBACK SOURCE MAP — extraction-only goals with pre-built URLs
 // ═══════════════════════════════════════════════
 
 interface FallbackDef {
   platform: string;
   label: string;
-  url_or_query: string;
+  urlTemplate: (topic: string) => string;
   goalTemplate: (topic: string) => string;
 }
 
@@ -995,37 +526,89 @@ function getFallback(
   originalTask: TinyFishTask,
   classification: any,
 ): FallbackDef | null {
-  // Extract a search topic from the original task goal
-  const topic = originalTask.goal.match(/search for ['"]?([^'",.]+)['"]?/i)?.[1]
-    || originalTask.extract?.fields?.[0]
-    || "the topic";
+  const topic = originalTask.extract?.fields?.[0] || "the topic";
 
   switch (failedPlatform) {
     case "apple_app_store":
       return {
         platform: "google_play_store",
         label: "Google Play Store",
-        url_or_query: "https://play.google.com/store/apps",
+        urlTemplate: (t) => `https://play.google.com/store/search?q=${encodeURIComponent(t)}&c=apps`,
         goalTemplate: (t) =>
-          `Navigate to the Google Play Store. Use the search bar to search for '${t}'. Click the first app result. Scroll down to the Reviews section. Sort by 'Most recent' and look for 1-star and 2-star reviews. Extract 20 negative reviews including: full review text, star rating, date, and reviewer name. Return as JSON array.`,
+          `Extract all visible app listings and their ratings on this page.
+
+For each item, extract ONLY:
+- app_name (string, e.g. 'Calm - Sleep & Meditation')
+- star_rating (number, e.g. 4.2)
+- review_count (string, e.g. '1.2M reviews')
+- short_description (string, first 150 chars, e.g. 'The #1 app for...')
+
+STOP CONDITIONS:
+- Stop after 10 items or all visible, whichever is fewer
+- Do NOT scroll more than 3 times
+- Do NOT click into any app pages
+
+EDGE CASES:
+- If cookie banner appears, close it first
+- If login wall appears, return empty array
+
+Return JSON: {'items': [{'app_name': '...', 'star_rating': 0, 'review_count': '...', 'short_description': '...'}]}
+If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
       };
 
     case "youtube_comments":
       return {
         platform: "reddit",
         label: "Reddit video discussions",
-        url_or_query: "https://www.reddit.com",
+        urlTemplate: (t) => `https://www.reddit.com/search/?q=${encodeURIComponent(t + ' review video')}&sort=relevance&t=year`,
         goalTemplate: (t) =>
-          `Navigate to reddit.com. Use the search bar to search for '${t} review video'. Sort results by 'Relevance' and filter to 'Past Year'. Open the top 5 threads. In each thread, extract the top 15 comments including comment text, upvote count, subreddit name, and relative date. Return as JSON array.`,
+          `Extract all visible post titles and preview text on this page.
+
+For each item, extract ONLY:
+- post_title (string, e.g. 'My honest review of...')
+- preview_text (string, first 200 chars, e.g. 'After using it for...')
+- upvotes (number, e.g. 42)
+- comment_count (number, e.g. 15)
+- subreddit (string, e.g. 'r/productivity')
+
+STOP CONDITIONS:
+- Stop after 15 items or all visible, whichever is fewer
+- Do NOT scroll more than 3 times
+- Do NOT click into any posts
+
+EDGE CASES:
+- If cookie banner appears, close it first
+- If login wall appears, return empty array
+
+Return JSON: {'items': [{'post_title': '...', 'preview_text': '...', 'upvotes': 0, 'comment_count': 0, 'subreddit': '...'}]}
+If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
       };
 
     case "tiktok_comments":
       return {
         platform: "quora",
         label: "Quora",
-        url_or_query: "https://www.quora.com",
+        urlTemplate: (t) => `https://www.quora.com/search?q=${encodeURIComponent(t)}`,
         goalTemplate: (t) =>
-          `Navigate to quora.com. Use the search bar to search for '${t}'. Open the top 5 question results. For each question, extract the top 3 answers including: answer text, author name, upvote count, and date. Return as JSON array.`,
+          `Extract all visible question titles and answer previews on this page.
+
+For each item, extract ONLY:
+- question_title (string, e.g. 'What is the best CRM for small teams?')
+- answer_preview (string, first 200 chars, e.g. 'I have tried several...')
+- answer_author (string, e.g. 'John Smith')
+- upvote_count (number, e.g. 25)
+
+STOP CONDITIONS:
+- Stop after 10 items or all visible, whichever is fewer
+- Do NOT scroll more than 3 times
+- Do NOT click into any questions
+
+EDGE CASES:
+- If cookie banner appears, close it first
+- If login wall appears, return empty array
+
+Return JSON: {'items': [{'question_title': '...', 'answer_preview': '...', 'answer_author': '...', 'upvote_count': 0}]}
+If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
       };
 
     case "facebook_groups_public": {
@@ -1034,17 +617,54 @@ function getFallback(
         return {
           platform: "patient_communities",
           label: "HealthUnlocked",
-          url_or_query: "https://healthunlocked.com",
+          urlTemplate: (t) => `https://healthunlocked.com/search/${encodeURIComponent(t)}`,
           goalTemplate: (t) =>
-            `Navigate to healthunlocked.com. Use the search functionality to search for '${t}'. Open the top 10 discussion threads. For each thread extract: original post text, top 5 replies, author names, community name, and dates. Return as JSON array.`,
+            `Extract all visible discussion thread titles and preview text on this page.
+
+For each item, extract ONLY:
+- thread_title (string, e.g. 'Has anyone tried CBT for anxiety?')
+- preview_text (string, first 200 chars, e.g. 'I have been struggling...')
+- community_name (string, e.g. 'Anxiety Support')
+- reply_count (number, e.g. 8)
+
+STOP CONDITIONS:
+- Stop after 15 items or all visible, whichever is fewer
+- Do NOT scroll more than 3 times
+- Do NOT click into any threads
+
+EDGE CASES:
+- If cookie banner appears, close it first
+- If login wall appears, return empty array
+
+Return JSON: {'items': [{'thread_title': '...', 'preview_text': '...', 'community_name': '...', 'reply_count': 0}]}
+If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
         };
       }
       return {
         platform: "reddit",
         label: "Reddit communities",
-        url_or_query: "https://www.reddit.com",
+        urlTemplate: (t) => `https://www.reddit.com/search/?q=${encodeURIComponent(t)}&sort=relevance&t=year`,
         goalTemplate: (t) =>
-          `Navigate to reddit.com. Use the search bar to search for '${t}'. Sort by 'Relevance' and filter to 'Past Year'. Open the top 5 threads. In each thread, extract the top 15 comments including comment text, upvote count, subreddit name, and relative date. Return as JSON array.`,
+          `Extract all visible post titles and preview text on this page.
+
+For each item, extract ONLY:
+- post_title (string, e.g. 'Why I switched from...')
+- preview_text (string, first 200 chars, e.g. 'After 2 years of...')
+- upvotes (number, e.g. 42)
+- comment_count (number, e.g. 15)
+- subreddit (string, e.g. 'r/smallbusiness')
+
+STOP CONDITIONS:
+- Stop after 15 items or all visible, whichever is fewer
+- Do NOT scroll more than 3 times
+- Do NOT click into any posts
+
+EDGE CASES:
+- If cookie banner appears, close it first
+- If login wall appears, return empty array
+
+Return JSON: {'items': [{'post_title': '...', 'preview_text': '...', 'upvotes': 0, 'comment_count': 0, 'subreddit': '...'}]}
+If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
       };
     }
 
@@ -1060,7 +680,6 @@ function isBlockingError(result: TinyFishResult): boolean {
       return true;
     }
   }
-  // Check for empty results (platform loaded but returned nothing)
   if (result.success) {
     const data = result.data;
     if (data === null || data === undefined) return true;
@@ -1075,8 +694,8 @@ function isBlockingError(result: TinyFishResult): boolean {
 }
 
 
-// Flat 120-second timeout for ALL platforms. If TinyFish can't get data in 2 min, it won't in 10.
-const TINYFISH_TIMEOUT_MS = 120_000;
+// Change 7: Increased from 120s to 180s
+const TINYFISH_TIMEOUT_MS = 180_000;
 
 function getTimeout(_platform: string): number {
   return TINYFISH_TIMEOUT_MS;
@@ -1086,13 +705,11 @@ function getTimeout(_platform: string): number {
 // PLATFORM CONFIGURATION SETS
 // ═══════════════════════════════════════════════
 
-// Platforms that need anti-detection browser (bot-protected sites)
 const STEALTH_PLATFORMS = new Set([
   "g2", "capterra", "trustpilot", "glassdoor",
   "amazon_reviews", "apple_app_store", "google_play_store",
 ]);
 
-// Platforms that need residential proxy to bypass Cloudflare/geo-blocks
 const PROXY_PLATFORMS = new Set([
   "g2", "capterra", "trustpilot", "glassdoor", "amazon_reviews",
 ]);
@@ -1126,20 +743,58 @@ async function runWithConcurrency<T>(
 
 const MAX_CONCURRENT_AGENTS = 4;
 
+// Change 4: Inject extract spec into goal text before sending to TinyFish
+function buildEnrichedGoal(task: TinyFishTask): string {
+  let goal = task.goal;
+
+  // If the goal already contains structured extraction instructions, don't double-inject
+  if (goal.includes("STOP CONDITIONS:") && goal.includes("Return JSON:")) {
+    return goal;
+  }
+
+  // Append extract spec if available and not already embedded
+  if (task.extract) {
+    const parts: string[] = [];
+    if (task.extract.fields?.length > 0) {
+      parts.push(`Return ONLY these fields: ${task.extract.fields.join(", ")}.`);
+    }
+    if (task.extract.max_items) {
+      parts.push(`Maximum ${task.extract.max_items} items.`);
+    }
+    if (task.extract.filter) {
+      parts.push(`Filter: ${task.extract.filter}.`);
+    }
+    if (parts.length > 0) {
+      goal += "\n\n" + parts.join(" ");
+    }
+  }
+
+  return goal;
+}
+
+// Change 9: Accept global abort signal to cancel in-flight tasks
 async function runTinyFishTask(
   task: TinyFishTask,
   apiKey: string,
   timeoutMs: number,
   send: (chunk: string) => void,
+  globalAbortSignal?: AbortSignal,
 ): Promise<TinyFishResult> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  // Wire global abort to cancel this task immediately
+  const onGlobalAbort = () => controller.abort();
+  globalAbortSignal?.addEventListener("abort", onGlobalAbort, { once: true });
 
   try {
     const browserProfile = STEALTH_PLATFORMS.has(task.platform) ? "stealth" : "lite";
     const proxyConfig = PROXY_PLATFORMS.has(task.platform)
       ? { proxy_config: { enabled: true, country_code: "US" } }
       : {};
+
+    // Change 4: Inject extract spec into goal
+    const enrichedGoal = buildEnrichedGoal(task);
 
     const response = await fetch("https://agent.tinyfish.ai/v1/automation/run-sse", {
       method: "POST",
@@ -1149,14 +804,13 @@ async function runTinyFishTask(
       },
       body: JSON.stringify({
         url: task.url_or_query,
-        goal: task.goal,
+        goal: enrichedGoal,
         browser_profile: browserProfile,
+        max_steps: 15, // Change 8: Prevent agent looping
         ...proxyConfig,
       }),
       signal: controller.signal,
     });
-
-    // DON'T clear timeout here — it must protect the entire SSE stream lifecycle
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -1190,7 +844,6 @@ async function runTinyFishTask(
           const event = JSON.parse(jsonStr);
 
           if (event.type === "PROGRESS" && event.purpose) {
-            // Forward TinyFish progress to frontend in real time
             send(logEvent(`${task.platform}: ${event.purpose}`, "searching"));
           } else if (event.type === "COMPLETE" && event.status === "COMPLETED") {
             resultData = event.resultJson || event.result || null;
@@ -1214,10 +867,14 @@ async function runTinyFishTask(
     return { platform: task.platform, success: false, data: null, error: "No result data in TinyFish response" };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unknown error";
+    if (msg.includes("abort")) {
+      return { platform: task.platform, success: false, data: null, error: "Cancelled (deadline reached)" };
+    }
     console.error(`TinyFish task failed for ${task.platform}:`, msg);
     return { platform: task.platform, success: false, data: null, error: msg };
   } finally {
-    clearTimeout(timeout); // Only clear AFTER stream is fully read or aborted
+    clearTimeout(timeout);
+    globalAbortSignal?.removeEventListener("abort", onGlobalAbort);
   }
 }
 
@@ -1321,7 +978,6 @@ serve(async (req: Request) => {
     query = body.query;
     intents = body.intents || [];
 
-    // Extract auth if present
     const authHeader = req.headers.get("authorization");
     if (authHeader) {
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -1332,7 +988,6 @@ serve(async (req: Request) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         userId = user.id;
-        // Get user's team
         const { data: membership } = await supabase
           .from("team_members")
           .select("team_id")
@@ -1359,7 +1014,6 @@ serve(async (req: Request) => {
   const reportId = `TR-${crypto.randomUUID().slice(0, 8)}`;
   const startTime = Date.now();
 
-  // Create SSE stream
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
@@ -1371,7 +1025,6 @@ serve(async (req: Request) => {
         }
       };
 
-      // Start SSE keepalive heartbeat every 15 seconds
       const heartbeatInterval = setInterval(() => {
         try {
           controller.enqueue(encoder.encode(": keepalive\n\n"));
@@ -1394,14 +1047,19 @@ serve(async (req: Request) => {
         const classification = classificationResult.classification;
         const rawTasks: TinyFishTask[] = classificationResult.tasks || [];
 
-        // Apply platform-specific fixes for blocked sources
+        // Apply platform-specific fixes
         const tasks = transformTasks(rawTasks, classification);
         if (tasks.length < rawTasks.length) {
           send(logEvent(`Dropped ${rawTasks.length - tasks.length} blocked platform(s) from task list`, "info"));
         }
 
-        // Map to frontend event shape
-        const sourcesSelected = tasks.map((t: any) => ({
+        // Cap at 5 tasks max (Change 3)
+        const cappedTasks = tasks.slice(0, 5);
+        if (tasks.length > 5) {
+          send(logEvent(`Capped sources from ${tasks.length} to 5 for reliability`, "info"));
+        }
+
+        const sourcesSelected = cappedTasks.map((t: any) => ({
           platform: t.platform,
           display_name: t.platform.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()),
           selection_reason: t.selection_reason,
@@ -1423,29 +1081,26 @@ serve(async (req: Request) => {
           sources_skipped: sourcesSkipped,
         }));
 
-        // ── DEBUG: Log exact URLs and goals for each task ──
-        for (const t of tasks) {
+        for (const t of cappedTasks) {
           const profile = STEALTH_PLATFORMS.has(t.platform) ? "stealth" : "lite";
           const proxy = PROXY_PLATFORMS.has(t.platform) ? "proxy:US" : "direct";
-          console.log(`[TASK DEBUG] ${t.platform} | profile=${profile} | ${proxy} | url=${t.url_or_query} | goal=${t.goal}`);
+          console.log(`[TASK DEBUG] ${t.platform} | profile=${profile} | ${proxy} | url=${t.url_or_query} | goal=${t.goal.substring(0, 200)}`);
           send(logEvent(`🔍 ${t.platform}: ${profile}/${proxy} → ${t.url_or_query.substring(0, 120)}`, "info"));
         }
-        send(logEvent(`Dispatching ${tasks.length} TinyFish agents (max ${MAX_CONCURRENT_AGENTS} concurrent, lite/stealth per platform)...`, "info"));
-        send(sseEvent("phase_update", { phase: "scraping", detail: `0 of ${tasks.length} sources complete` }));
+        send(logEvent(`Dispatching ${cappedTasks.length} TinyFish agents (max ${MAX_CONCURRENT_AGENTS} concurrent)...`, "info"));
+        send(sseEvent("phase_update", { phase: "scraping", detail: `0 of ${cappedTasks.length} sources complete` }));
 
         // ═══ STAGE 2: TINYFISH SCRAPING + QUALITY FILTERING (TIME-BUDGETED) ═══
 
         const filteredDataByPlatform: Array<{ platform: string; data: any }> = [];
         let doneCount = 0;
-        let dataCount = 0; // tasks that returned actual data
-        const totalTasks = tasks.length;
-        const SCRAPING_DEADLINE_MS = 300_000; // 5 minutes max for all scraping
+        let dataCount = 0;
+        const totalTasks = cappedTasks.length;
+        const SCRAPING_DEADLINE_MS = 300_000;
         const scrapingAbort = new AbortController();
         let earlyResolved = false;
 
-        // Wrap scraping in a deadline race
         const scrapingPromise = new Promise<void>((resolveAll) => {
-          // Deadline timer
           const deadlineTimer = setTimeout(() => {
             if (!earlyResolved) {
               earlyResolved = true;
@@ -1457,15 +1112,14 @@ serve(async (req: Request) => {
 
           const checkEarlyExit = () => {
             if (earlyResolved) return;
-            // Early exit: 60%+ done AND at least 2 data sources
-            if (doneCount >= Math.ceil(totalTasks * 0.6) && dataCount >= 2) {
+            // Change 10: Increased from 60% to 80% threshold
+            if (doneCount >= Math.ceil(totalTasks * 0.8) && dataCount >= 2) {
               earlyResolved = true;
               clearTimeout(deadlineTimer);
               send(logEvent(`✓ ${dataCount} sources collected (${doneCount}/${totalTasks} done) — proceeding to synthesis`, "info"));
               scrapingAbort.abort();
               resolveAll();
             }
-            // All done
             if (doneCount >= totalTasks) {
               earlyResolved = true;
               clearTimeout(deadlineTimer);
@@ -1473,15 +1127,13 @@ serve(async (req: Request) => {
             }
           };
 
-          // Each task runs as a factory function, limited to MAX_CONCURRENT_AGENTS at a time
-          const taskFactories = tasks.map((task) => async () => {
+          const taskFactories = cappedTasks.map((task) => async () => {
             if (scrapingAbort.signal.aborted) {
               doneCount++;
               checkEarlyExit();
               return;
             }
 
-            // Mark this source as searching
             send(sseEvent("source_update", {
               platform: task.platform,
               status: "searching",
@@ -1490,9 +1142,10 @@ serve(async (req: Request) => {
             }));
 
             const timeoutMs = getTimeout(task.platform);
-            let result = await runTinyFishTask(task, TINYFISH_API_KEY, timeoutMs, send);
+            // Change 9: Pass global abort signal
+            let result = await runTinyFishTask(task, TINYFISH_API_KEY, timeoutMs, send, scrapingAbort.signal);
 
-            // ── FALLBACK LOGIC: if blocked or empty, try substitute source ──
+            // Fallback logic
             if (isBlockingError(result) && !scrapingAbort.signal.aborted) {
               const fallback = getFallback(task.platform, task, classification);
               if (fallback) {
@@ -1505,17 +1158,17 @@ serve(async (req: Request) => {
                   message: `${displayName} blocked — falling back to ${fallback.label}`,
                 }));
 
-                const topic = task.goal.match(/search for ['"]?([^'",.]+)['"]?/i)?.[1] || "the topic";
+                const topic = task.extract?.fields?.[0] || "the topic";
                 const fallbackTask: TinyFishTask = {
                   platform: fallback.platform,
-                  url_or_query: fallback.url_or_query,
+                  url_or_query: fallback.urlTemplate(topic),
                   goal: fallback.goalTemplate(topic),
                   selection_reason: `Fallback for blocked ${displayName}`,
                   extract: task.extract,
                 };
 
                 const fallbackTimeout = getTimeout(fallback.platform);
-                result = await runTinyFishTask(fallbackTask, TINYFISH_API_KEY, fallbackTimeout, send);
+                result = await runTinyFishTask(fallbackTask, TINYFISH_API_KEY, fallbackTimeout, send, scrapingAbort.signal);
 
                 if (result.success) {
                   result.platform = fallback.platform;
@@ -1580,7 +1233,6 @@ serve(async (req: Request) => {
             checkEarlyExit();
           });
 
-          // Run with concurrency limit instead of all-at-once
           runWithConcurrency(taskFactories, MAX_CONCURRENT_AGENTS).catch((err) => {
             console.error("Concurrency runner error:", err);
           });
@@ -1588,7 +1240,6 @@ serve(async (req: Request) => {
 
         await scrapingPromise;
 
-        // Check if we have any data at all
         if (filteredDataByPlatform.length === 0) {
           send(sseEvent("error", { message: "All sources failed. No data collected." }));
           controller.close();
@@ -1643,7 +1294,6 @@ serve(async (req: Request) => {
             });
           } catch (dbErr) {
             console.error("Failed to save report to database:", dbErr);
-            // Don't fail the report if DB save fails
           }
         }
       } catch (e) {

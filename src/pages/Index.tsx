@@ -138,7 +138,7 @@ const Index = () => {
               {appState === "complete" && reportData && (
                 <>
                   {!isAuthenticated && <AuthCTA />}
-                  <ReportPanel reportData={reportData} userTier={userTier} />
+                  <ReportPanel reportData={reportData} userTier={userTier} onNewReport={handleNewReport} />
                 </>
               )}
               {appState === "error" && (
@@ -213,7 +213,7 @@ const Index = () => {
           {appState === "complete" && reportData && (
             <>
               {!isAuthenticated && <AuthCTA />}
-              <ReportPanel reportData={reportData} userTier={userTier} />
+              <ReportPanel reportData={reportData} userTier={userTier} onNewReport={handleNewReport} />
             </>
           )}
 
