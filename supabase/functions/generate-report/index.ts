@@ -371,7 +371,7 @@ Critical rules:
 }
 
 // ═══════════════════════════════════════════════
-// LOVABLE AI GATEWAY HELPER
+// GOOGLE GEMINI API HELPER
 // ═══════════════════════════════════════════════
 
 async function callGemini(
@@ -379,37 +379,38 @@ async function callGemini(
   model: string,
   contextData?: string,
 ): Promise<string> {
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+  const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+  if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not configured");
 
-  const messages: Array<{ role: string; content: string }> = [
-    { role: "system", content: prompt },
-  ];
-  if (contextData) {
-    messages.push({ role: "user", content: contextData });
-  } else {
-    messages.push({ role: "user", content: "Execute the task described in the system prompt. Return only valid JSON." });
-  }
+  // Map gateway model names to native Gemini model names
+  const modelName = model.replace("google/", "");
 
-  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const userText = contextData || "Execute the task described in the system instruction. Return only valid JSON.";
+
+  const body = {
+    contents: [
+      { role: "user", parts: [{ text: userText }] },
+    ],
+    systemInstruction: { parts: [{ text: prompt }] },
+  };
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
+
+  const response = await fetch(url, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ model, messages, stream: false }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
 
   if (response.status === 429) throw new Error("AI rate limit exceeded. Please try again in a moment.");
-  if (response.status === 402) throw new Error("AI credits exhausted. Please add credits in Settings → Workspace → Usage.");
   if (!response.ok) {
     const text = await response.text();
-    console.error("AI gateway error:", response.status, text);
-    throw new Error(`AI gateway error: ${response.status}`);
+    console.error("Gemini API error:", response.status, text);
+    throw new Error(`Gemini API error: ${response.status}`);
   }
 
   const result = await response.json();
-  return result.choices?.[0]?.message?.content || "";
+  return result.candidates?.[0]?.content?.parts?.[0]?.text || "";
 }
 
 function extractJSON(text: string): unknown {
