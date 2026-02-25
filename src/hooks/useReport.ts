@@ -99,11 +99,17 @@ export function useReport() {
       case "source_update": {
         const su = data as import("@/types/report").SourceUpdateEvent;
         setSources((prev) =>
-          prev.map((s) =>
-            s.platform === su.platform
-              ? { ...s, status: su.status, items_found: su.items_found, message: su.message }
-              : s,
-          ),
+          prev.map((s) => {
+            if (s.platform !== su.platform) return s;
+            // Never downgrade from "done" — multiple tasks per platform can race
+            if (s.status === "done" && su.status === "searching") return s;
+            return {
+              ...s,
+              status: su.status,
+              items_found: s.status === "done" ? Math.max(s.items_found, su.items_found) : su.items_found,
+              message: su.message,
+            };
+          }),
         );
         break;
       }

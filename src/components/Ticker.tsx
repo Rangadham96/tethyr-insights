@@ -38,7 +38,7 @@ const Ticker = ({ appState, sources, reportData, currentPhase }: TickerProps) =>
         }));
       case "complete":
         return [
-          { text: `${reportData?.meta.sources_used.length || 0} platforms searched`, live: false, dot: "green" as const },
+          { text: `${sources.filter(s => s.status === "done").length} platforms searched`, live: false, dot: "green" as const },
           { text: `${reportData?.meta.data_points.toLocaleString() || 0} data points`, live: false, dot: "green" as const },
           { text: `Verdict: ${reportData?.meta.verdict || "—"}`, live: false, dot: "green" as const },
           { text: `Report ${reportData?.meta.report_id || ""}`, live: false },
