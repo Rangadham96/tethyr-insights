@@ -396,25 +396,37 @@ async function callGemini(
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const maxRetries = 2;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
 
-  if (response.status === 429) {
-    const errText = await response.text();
-    console.error("Gemini 429 detail:", errText);
-    throw new Error("AI rate limit exceeded. Please try again in a moment.");
-  }
-  if (!response.ok) {
-    const text = await response.text();
-    console.error("Gemini API error:", response.status, text);
-    throw new Error(`Gemini API error: ${response.status}`);
-  }
+    if (response.status === 503 && attempt < maxRetries) {
+      await response.text(); // consume body
+      const wait = (attempt + 1) * 3000;
+      console.warn(`Gemini 503 (attempt ${attempt + 1}), retrying in ${wait}ms...`);
+      await new Promise((r) => setTimeout(r, wait));
+      continue;
+    }
 
-  const result = await response.json();
-  return result.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    if (response.status === 429) {
+      const errText = await response.text();
+      console.error("Gemini 429 detail:", errText);
+      throw new Error("AI rate limit exceeded. Please try again in a moment.");
+    }
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("Gemini API error:", response.status, text);
+      throw new Error(`Gemini API error: ${response.status}`);
+    }
+
+    const result = await response.json();
+    return result.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  }
+  throw new Error("Gemini API unavailable after retries");
 }
 
 function extractJSON(text: string): unknown {
