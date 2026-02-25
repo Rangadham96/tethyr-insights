@@ -73,7 +73,7 @@ Fewer sources = faster, more reliable results.
 MASTER SOURCE LIST — USE WHEN / SKIP WHEN only:
 
 ── DISCUSSION & COMMUNITY ──
-reddit — USE WHEN: almost always. SKIP WHEN: never. URL MUST USE: https://www.google.com/search?q=site:reddit.com+[subreddit_or_topic]+[search_terms] (do NOT use old.reddit.com/search directly — it often returns empty results. Google site-search is far more reliable).
+reddit — USE WHEN: almost always. SKIP WHEN: never. URL MUST USE: https://old.reddit.com/search/?q=[simple+terms]&sort=relevance&t=year — CRITICAL: keep the query SIMPLE (2-4 words, no quotes, no boolean operators, no subreddit filters). Example: https://old.reddit.com/search/?q=freelance+invoicing+frustration&sort=relevance&t=year. Reddit search works best with simple keyword queries.
 hackernews — USE WHEN: DEVELOPER_TOOLS, B2B_SAAS, FOUNDERS_PMS. SKIP WHEN: HEALTH_WELLNESS, CONSUMERS_GENERAL.
 indiehackers — USE WHEN: FOUNDERS_PMS, B2B_SAAS, VALIDATE/GAPS. SKIP WHEN: HEALTH_WELLNESS, CONSUMERS_GENERAL.
 producthunt — USE WHEN: B2C_APP, B2B_SAAS, DEVELOPER_TOOLS. SKIP WHEN: PHYSICAL_PRODUCT, SERVICE_BUSINESS. URL MUST USE: https://www.google.com/search?q=site:producthunt.com+[query] (do NOT use producthunt.com directly).
@@ -95,7 +95,7 @@ bbb_complaints — USE WHEN: CONSUMERS_GENERAL, FINANCE, SERVICE_BUSINESS.
 
 ── SOCIAL PLATFORMS ──
 youtube_comments — USE WHEN: HEALTH_WELLNESS, CREATOR_TOOLS, EDUCATION, CONSUMERS_GENERAL. SKIP WHEN: DEVELOPER_TOOLS.
-twitter_x — USE WHEN: EMERGING problems, real-time reactions, COMPETE intent. SKIP WHEN: ESTABLISHED problems. URL MUST USE: https://www.google.com/search?q=site:twitter.com+OR+site:x.com+[search_terms] (do NOT use twitter.com or x.com directly — login wall blocks all scraping).
+twitter_x — *** DEPRIORITIZED — LOGIN WALL + GOOGLE CAPTCHA ***. Only select if no other options available. URL MUST USE: https://www.google.com/search?q=site:twitter.com+OR+site:x.com+[simple terms] (do NOT use twitter.com or x.com directly).
 linkedin_comments — USE WHEN: B2B_SAAS, ENTERPRISE_BUYERS, PROFESSIONALS.
 facebook_groups_public — *** BLOCKED — DO NOT SELECT ***
 tiktok_comments — *** BLOCKED — DO NOT SELECT ***
@@ -490,7 +490,7 @@ interface TinyFishResult {
 // ═══════════════════════════════════════════════
 
 const PLATFORM_BASE_URLS: Record<string, string> = {
-  reddit: "https://www.google.com/search?q=site:reddit.com",
+  reddit: "https://old.reddit.com",
   hackernews: "https://news.ycombinator.com",
   g2: "https://www.g2.com",
   capterra: "https://www.capterra.com",
@@ -737,26 +737,28 @@ If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
     case "reddit":
       return {
         platform: "reddit",
-        label: "Reddit (via Google)",
-        urlTemplate: (t) => `https://www.google.com/search?q=site:reddit.com+${encodeURIComponent(t)}`,
+        label: "Reddit (broader search)",
+        urlTemplate: (t) => `https://old.reddit.com/search/?q=${encodeURIComponent(t)}&sort=relevance&t=year`,
         goalTemplate: (t) =>
-          `Extract all visible Google search result titles and snippets on this page.
+          `Extract all visible post titles and preview text on this page.
 
 For each item, extract ONLY:
-- title (string, e.g. 'Why I ditched HubSpot for a simpler CRM')
-- snippet (string, e.g. 'After 6 months of frustration with...')
-- url (string, e.g. 'https://www.reddit.com/r/SaaS/comments/...')
+- post_title (string, e.g. 'Why I ditched HubSpot for a simpler CRM')
+- preview_text (string, first 200 chars, e.g. 'After 6 months of frustration...')
+- upvotes (number, e.g. 42)
+- comment_count (number, e.g. 15)
+- subreddit (string, e.g. 'r/freelance')
 
 STOP CONDITIONS:
 - Stop after 15 items or all visible, whichever is fewer
-- Scroll down to load content if needed, but stop after 3 scrolls maximum
-- Do NOT navigate away from this page (no clicking into results)
+- Scroll down to load content if needed, but stop after 5 scrolls maximum
+- Do NOT navigate away from this page (no clicking into posts)
 
 EDGE CASES:
 - If cookie banner appears, close it first
-- If CAPTCHA appears, return empty array immediately
+- If login wall appears, return empty array
 
-Return JSON: {'items': [{'title': '...', 'snippet': '...', 'url': '...'}]}
+Return JSON: {'items': [{'post_title': '...', 'preview_text': '...', 'upvotes': 0, 'comment_count': 0, 'subreddit': '...'}]}
 If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
       };
 
@@ -918,8 +920,11 @@ async function runTinyFishTask(
   globalAbortSignal?.addEventListener("abort", onGlobalAbort, { once: true });
 
   try {
-    const browserProfile = STEALTH_PLATFORMS.has(task.platform) ? "stealth" : "lite";
-    const proxyConfig = PROXY_PLATFORMS.has(task.platform)
+    // If URL goes through Google (site-search), use lite profile + no proxy
+    // Google blocks stealth browsers and proxies aggressively
+    const isGoogleRoute = task.url_or_query.includes("google.com/search");
+    const browserProfile = isGoogleRoute ? "lite" : (STEALTH_PLATFORMS.has(task.platform) ? "stealth" : "lite");
+    const proxyConfig = (!isGoogleRoute && PROXY_PLATFORMS.has(task.platform))
       ? { proxy_config: { enabled: true, country_code: "US" } }
       : {};
 
