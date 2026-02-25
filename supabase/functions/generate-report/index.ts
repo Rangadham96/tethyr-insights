@@ -402,7 +402,11 @@ async function callGemini(
     body: JSON.stringify(body),
   });
 
-  if (response.status === 429) throw new Error("AI rate limit exceeded. Please try again in a moment.");
+  if (response.status === 429) {
+    const errText = await response.text();
+    console.error("Gemini 429 detail:", errText);
+    throw new Error("AI rate limit exceeded. Please try again in a moment.");
+  }
   if (!response.ok) {
     const text = await response.text();
     console.error("Gemini API error:", response.status, text);
