@@ -1297,6 +1297,12 @@ serve(async (req: Request) => {
 
           const taskFactories = cappedTasks.map((task) => async () => {
             if (scrapingAbort.signal.aborted) {
+              send(sseEvent("source_update", {
+                platform: task.platform,
+                status: "error",
+                items_found: 0,
+                message: `${task.platform}: skipped (deadline reached)`,
+              }));
               doneCount++;
               checkEarlyExit();
               return;
