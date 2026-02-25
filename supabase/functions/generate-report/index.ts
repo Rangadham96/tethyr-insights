@@ -73,7 +73,7 @@ Fewer sources = faster, more reliable results.
 MASTER SOURCE LIST — USE WHEN / SKIP WHEN only:
 
 ── DISCUSSION & COMMUNITY ──
-reddit — USE WHEN: almost always. SKIP WHEN: never.
+reddit — USE WHEN: almost always. SKIP WHEN: never. URL MUST USE: https://www.google.com/search?q=site:reddit.com+[subreddit_or_topic]+[search_terms] (do NOT use old.reddit.com/search directly — it often returns empty results. Google site-search is far more reliable).
 hackernews — USE WHEN: DEVELOPER_TOOLS, B2B_SAAS, FOUNDERS_PMS. SKIP WHEN: HEALTH_WELLNESS, CONSUMERS_GENERAL.
 indiehackers — USE WHEN: FOUNDERS_PMS, B2B_SAAS, VALIDATE/GAPS. SKIP WHEN: HEALTH_WELLNESS, CONSUMERS_GENERAL.
 producthunt — USE WHEN: B2C_APP, B2B_SAAS, DEVELOPER_TOOLS. SKIP WHEN: PHYSICAL_PRODUCT, SERVICE_BUSINESS. URL MUST USE: https://www.google.com/search?q=site:producthunt.com+[query] (do NOT use producthunt.com directly).
@@ -95,7 +95,7 @@ bbb_complaints — USE WHEN: CONSUMERS_GENERAL, FINANCE, SERVICE_BUSINESS.
 
 ── SOCIAL PLATFORMS ──
 youtube_comments — USE WHEN: HEALTH_WELLNESS, CREATOR_TOOLS, EDUCATION, CONSUMERS_GENERAL. SKIP WHEN: DEVELOPER_TOOLS.
-twitter_x — USE WHEN: EMERGING problems, real-time reactions, COMPETE intent. SKIP WHEN: ESTABLISHED problems.
+twitter_x — USE WHEN: EMERGING problems, real-time reactions, COMPETE intent. SKIP WHEN: ESTABLISHED problems. URL MUST USE: https://www.google.com/search?q=site:twitter.com+OR+site:x.com+[search_terms] (do NOT use twitter.com or x.com directly — login wall blocks all scraping).
 linkedin_comments — USE WHEN: B2B_SAAS, ENTERPRISE_BUYERS, PROFESSIONALS.
 facebook_groups_public — *** BLOCKED — DO NOT SELECT ***
 tiktok_comments — *** BLOCKED — DO NOT SELECT ***
@@ -365,9 +365,17 @@ Critical rules:
 - verdict_statement must be direct and one sentence
 - Every claim must trace back to actual scraped data
 - audience_language must be exact phrases real humans used
-- If overall signal is WEAK, set verdict to UNCLEAR
 - build_recommendations must reference specific evidence counts
-- Return only valid JSON. No markdown. No explanation.`;
+- Return only valid JSON. No markdown. No explanation.
+
+CONFIDENCE SCALING RULES (MANDATORY — OVERRIDE ALL OTHER RULES):
+- If total data_points < 15: verdict MUST be "UNCLEAR" or "PARTIAL" (never "CONFIRMED")
+- If a feature gap has frequency <= 2 mentions: it CANNOT be ranked above position 3
+- build_recommendations with evidence_count <= 2: set rank no higher than 3
+- NEVER use language like "Focus on" or "HIGH PRIORITY" for anything with < 5 data points
+- If competitors are not directly mentioned in the scraped data: write "Insufficient data to assess" for users_value and users_hate — do NOT fabricate general knowledge
+- If total data_points < 10: limit feature_gaps to maximum 3 items, build_recommendations to maximum 2 items
+- Scale your language confidence to match data volume: thin data = hedged language ("may", "early signal suggests"), rich data = assertive language`;
 }
 
 // ═══════════════════════════════════════════════
@@ -482,7 +490,7 @@ interface TinyFishResult {
 // ═══════════════════════════════════════════════
 
 const PLATFORM_BASE_URLS: Record<string, string> = {
-  reddit: "https://old.reddit.com",
+  reddit: "https://www.google.com/search?q=site:reddit.com",
   hackernews: "https://news.ycombinator.com",
   g2: "https://www.g2.com",
   capterra: "https://www.capterra.com",
@@ -498,7 +506,8 @@ const PLATFORM_BASE_URLS: Record<string, string> = {
   academic_papers: "https://scholar.google.com",
   amazon_reviews: "https://www.amazon.com",
   job_postings: "https://www.indeed.com",
-  twitter: "https://twitter.com",
+  twitter: "https://www.google.com/search?q=site:twitter.com+OR+site:x.com",
+  twitter_x: "https://www.google.com/search?q=site:twitter.com+OR+site:x.com",
   linkedin: "https://www.linkedin.com",
 };
 
@@ -722,6 +731,58 @@ EDGE CASES:
 - If login wall appears, return empty array
 
 Return JSON: {'items': [{'post_title': '...', 'preview_text': '...', 'upvotes': 0, 'comment_count': 0, 'subreddit': '...'}]}
+If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
+      };
+
+    case "reddit":
+      return {
+        platform: "reddit",
+        label: "Reddit (via Google)",
+        urlTemplate: (t) => `https://www.google.com/search?q=site:reddit.com+${encodeURIComponent(t)}`,
+        goalTemplate: (t) =>
+          `Extract all visible Google search result titles and snippets on this page.
+
+For each item, extract ONLY:
+- title (string, e.g. 'Why I ditched HubSpot for a simpler CRM')
+- snippet (string, e.g. 'After 6 months of frustration with...')
+- url (string, e.g. 'https://www.reddit.com/r/SaaS/comments/...')
+
+STOP CONDITIONS:
+- Stop after 15 items or all visible, whichever is fewer
+- Scroll down to load content if needed, but stop after 3 scrolls maximum
+- Do NOT navigate away from this page (no clicking into results)
+
+EDGE CASES:
+- If cookie banner appears, close it first
+- If CAPTCHA appears, return empty array immediately
+
+Return JSON: {'items': [{'title': '...', 'snippet': '...', 'url': '...'}]}
+If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
+      };
+
+    case "twitter_x":
+      return {
+        platform: "twitter_x",
+        label: "Twitter/X (via Google)",
+        urlTemplate: (t) => `https://www.google.com/search?q=site:twitter.com+OR+site:x.com+${encodeURIComponent(t)}`,
+        goalTemplate: (t) =>
+          `Extract all visible Google search result titles and snippets on this page.
+
+For each item, extract ONLY:
+- title (string, e.g. 'Frustrated with invoicing tools')
+- snippet (string, e.g. 'Just spent 3 hours trying to...')
+- url (string, e.g. 'https://twitter.com/user/status/...')
+
+STOP CONDITIONS:
+- Stop after 15 items or all visible, whichever is fewer
+- Scroll down to load content if needed, but stop after 3 scrolls maximum
+- Do NOT navigate away from this page (no clicking into results)
+
+EDGE CASES:
+- If cookie banner appears, close it first
+- If CAPTCHA appears, return empty array immediately
+
+Return JSON: {'items': [{'title': '...', 'snippet': '...', 'url': '...'}]}
 If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
       };
 
@@ -1311,8 +1372,13 @@ serve(async (req: Request) => {
 
               // Safety net: if filter returned NONE but raw data has content, use raw data
               if (itemsFound === 0 && rawData) {
-                const hasRawContent = Array.isArray(rawData) ? rawData.length > 0 
-                  : (typeof rawData === "object" && rawData !== null && Object.keys(rawData).length > 0);
+                // Fix: check for actual content items, not just object keys
+                // {items: [], error: "login_wall"} has keys but no real data
+                const hasRawContent = Array.isArray(rawData) 
+                  ? rawData.length > 0
+                  : (typeof rawData === "object" && rawData !== null 
+                     && Array.isArray((rawData as any).items) 
+                     && (rawData as any).items.length > 0);
                 if (hasRawContent) {
                   send(logEvent(`${activePlatform}: quality filter returned 0 items but raw data exists — using raw data`, "info"));
                   filteredDataByPlatform.push({ platform: activePlatform, data: { signal: "WEAK", items: Array.isArray(rawData) ? rawData : [rawData] } });
