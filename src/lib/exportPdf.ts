@@ -33,14 +33,27 @@ const VERDICT_ICON: Record<string, string> = {
   INVALIDATED: "↓",
 };
 
-// Page geometry (A4)
+// Page geometry (A4) — editorial asymmetric margins
 const PW = 210;  // page width mm
 const PH = 297;  // page height mm
-const ML = 20;   // margin left
-const MR = 20;   // margin right
+const ML = 22;   // margin left (wider for editorial feel)
+const MR = 18;   // margin right
 const MT = 22;   // margin top
 const MB = 20;   // margin bottom
-const CW = PW - ML - MR; // content width
+const CW = PW - ML - MR; // content width = 170mm
+
+// Line-height multipliers matched to font sizes
+const LH = {
+  pt16: 6.5,   // 16pt display
+  pt14: 5.5,   // 14pt section title
+  pt10: 4.2,   // 10pt body
+  pt9_5: 4.0,  // 9.5pt body
+  pt9: 3.8,    // 9pt body
+  pt8_5: 3.6,  // 8.5pt body
+  pt7: 3.0,    // 7pt mono
+  pt6_5: 2.8,  // 6.5pt mono
+  pt6: 2.6,    // 6pt mono
+};
 
 export function exportReportPdf(report: ReportData) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
@@ -49,8 +62,6 @@ export function exportReportPdf(report: ReportData) {
   // ── Helpers ──
 
   function setFont(style: "display" | "body" | "mono", weight: "normal" | "bold" | "italic" = "normal") {
-    // jsPDF only has helvetica/courier/times built-in
-    // Map: display → times (serif), body → times, mono → courier
     if (style === "mono") {
       doc.setFont("courier", weight === "bold" ? "bold" : weight === "italic" ? "oblique" : "normal");
     } else if (style === "display") {
@@ -75,7 +86,6 @@ export function exportReportPdf(report: ReportData) {
   function checkPage(needed: number) {
     if (y + needed > PH - MB) {
       doc.addPage();
-      // Paper background
       fillColor(C.paper);
       doc.rect(0, 0, PW, PH, "F");
       y = MT;
@@ -109,7 +119,7 @@ export function exportReportPdf(report: ReportData) {
     color(C.ink);
     const lines = splitText(text, CW);
     doc.text(lines, ML, y);
-    y += lines.length * 5.5 + 3;
+    y += lines.length * LH.pt14 + 3;
   }
 
   // ── Paper background on first page ──
@@ -148,7 +158,7 @@ export function exportReportPdf(report: ReportData) {
   color(C.ink);
   const queryLines = splitText(`"${report.meta.query}"`, CW);
   doc.text(queryLines, ML, y);
-  y += queryLines.length * 6.5 + 4;
+  y += queryLines.length * LH.pt16 + 4;
 
   drawRule(ML, ML + CW, y);
   y += 8;
@@ -157,53 +167,60 @@ export function exportReportPdf(report: ReportData) {
   sectionNumber("01");
   sectionTitle("Problem Validation");
 
-  // Verdict block
+  // Verdict block — dynamically sized
   if (report.meta.verdict_statement) {
-    checkPage(14);
     const verdictC = VERDICT_COLOR[report.meta.verdict] || C.ink;
+    setFont("body", "bold");
+    doc.setFontSize(10);
+    const verdictLines = splitText(report.meta.verdict_statement, CW - 8);
+    const blockH = Math.max(verdictLines.length * LH.pt10 + 6, 10);
+    checkPage(blockH + 5);
+
     // Left accent bar
     fillColor(verdictC);
-    doc.rect(ML, y - 1, 1.2, 10, "F");
-    // Light tinted background — blend verdict color with paper at ~8%
+    doc.rect(ML, y - 1, 1.2, blockH, "F");
+    // Light tinted background
     const tint: [number, number, number] = [
       Math.round(C.paper[0] * 0.92 + verdictC[0] * 0.08),
       Math.round(C.paper[1] * 0.92 + verdictC[1] * 0.08),
       Math.round(C.paper[2] * 0.92 + verdictC[2] * 0.08),
     ];
     fillColor(tint);
-    doc.rect(ML + 1.2, y - 1, CW - 1.2, 10, "F");
+    doc.rect(ML + 1.2, y - 1, CW - 1.2, blockH, "F");
 
-    setFont("body", "bold");
-    doc.setFontSize(10);
     color(verdictC);
-    const verdictLines = splitText(report.meta.verdict_statement, CW - 8);
     doc.text(verdictLines, ML + 4, y + 3);
-    y += Math.max(verdictLines.length * 4.5, 10) + 5;
+    y += blockH + 5;
   }
 
-  // Quotes
+  // Quotes — compact source label, more room for quote text
+  const QUOTE_LABEL_W = 18; // mm for source label
+  const QUOTE_START = ML + QUOTE_LABEL_W + 2; // quote text starts here
+  const QUOTE_W = CW - QUOTE_LABEL_W - 2; // available quote width
+
   for (const q of report.problem_validation.quotes) {
-    const quoteLines = splitText(`"${q.text}"`, CW - 30);
-    checkPage(quoteLines.length * 4 + 6);
+    const quoteLines = splitText(`"${q.text}"`, QUOTE_W);
+    checkPage(quoteLines.length * LH.pt10 + 6);
 
     setFont("mono");
     doc.setFontSize(6);
     color(C.ink4);
     const srcLabel = q.source || "";
     const platLabel = SOURCE_REGISTRY[q.platform]?.display_name || q.platform;
-    doc.text(srcLabel, ML + 24, y, { align: "right" });
-    doc.text(platLabel, ML + 24, y + 3, { align: "right" });
+    // Source labels right-aligned within the label column
+    doc.text(srcLabel, ML + QUOTE_LABEL_W, y, { align: "right" });
+    doc.text(platLabel, ML + QUOTE_LABEL_W, y + 3, { align: "right" });
 
     // vertical rule
     drawColor(C.rule);
     doc.setLineWidth(0.15);
-    doc.line(ML + 26, y - 1, ML + 26, y + quoteLines.length * 4 + 1);
+    doc.line(QUOTE_START - 1, y - 1, QUOTE_START - 1, y + quoteLines.length * LH.pt10 + 1);
 
     setFont("body", "italic");
     doc.setFontSize(10);
     color(C.ink2);
-    doc.text(quoteLines, ML + 30, y);
-    y += quoteLines.length * 4 + 5;
+    doc.text(quoteLines, QUOTE_START, y);
+    y += quoteLines.length * LH.pt10 + 5;
   }
 
   drawRule(ML, ML + CW, y);
@@ -213,15 +230,24 @@ export function exportReportPdf(report: ReportData) {
   sectionNumber("02");
   sectionTitle("What people actually want — ranked by frequency");
 
+  // Proportional columns: # 10%, GAP 55%, FREQ 15%, STATUS 20%
+  const gapCol = {
+    num: ML,
+    gap: ML + CW * 0.08,
+    freq: ML + CW * 0.65,
+    status: ML + CW * 0.80,
+  };
+  const gapTextW = CW * 0.55; // width for gap description
+
   // Table header
   checkPage(8);
   setFont("mono");
   doc.setFontSize(6);
   color(C.ink3);
-  doc.text("#", ML, y);
-  doc.text("GAP", ML + 8, y);
-  doc.text("FREQ", ML + CW - 30, y);
-  doc.text("STATUS", ML + CW - 12, y);
+  doc.text("#", gapCol.num, y);
+  doc.text("GAP", gapCol.gap, y);
+  doc.text("FREQ", gapCol.freq, y);
+  doc.text("STATUS", gapCol.status, y);
   y += 2;
   drawRule(ML, ML + CW, y, true);
   y += 4;
@@ -229,30 +255,30 @@ export function exportReportPdf(report: ReportData) {
   for (let i = 0; i < report.feature_gaps.gaps.length; i++) {
     const g = report.feature_gaps.gaps[i];
     const gapText = `${g.title}: ${g.description}`;
-    const gapLines = splitText(gapText, CW - 50);
-    checkPage(gapLines.length * 3.8 + 4);
+    const gapLines = splitText(gapText, gapTextW);
+    checkPage(gapLines.length * LH.pt9 + 4);
 
     setFont("mono");
     doc.setFontSize(6.5);
     color(C.ink4);
-    doc.text(String(i + 1).padStart(2, "0"), ML, y);
+    doc.text(String(i + 1).padStart(2, "0"), gapCol.num, y);
 
     setFont("body");
     doc.setFontSize(9);
     color(C.ink2);
-    doc.text(gapLines, ML + 8, y);
+    doc.text(gapLines, gapCol.gap, y);
 
     setFont("mono");
     doc.setFontSize(6.5);
     color(C.ink4);
-    doc.text(g.frequency, ML + CW - 30, y);
+    doc.text(g.frequency, gapCol.freq, y);
 
     color(g.status === "Unaddressed" ? C.red : C.ink4);
-    doc.text(g.status.toUpperCase(), ML + CW - 12, y);
+    doc.text(g.status.toUpperCase(), gapCol.status, y);
 
-    y += gapLines.length * 3.8 + 3;
+    y += gapLines.length * LH.pt9 + 3;
     if (i < report.feature_gaps.gaps.length - 1) {
-      drawRule(ML + 8, ML + CW, y - 1);
+      drawRule(gapCol.gap, ML + CW, y - 1);
     }
   }
 
@@ -263,16 +289,29 @@ export function exportReportPdf(report: ReportData) {
   sectionNumber("03");
   sectionTitle("Competitor weaknesses — from their users' own words");
 
+  // Weighted columns: 20% / 25% / 30% / 25%
+  const compCol = {
+    name: ML,
+    pros: ML + CW * 0.20,
+    cons: ML + CW * 0.45,
+    opp: ML + CW * 0.75,
+  };
+  const compW = {
+    name: CW * 0.18,
+    pros: CW * 0.23,
+    cons: CW * 0.28,
+    opp: CW * 0.23,
+  };
+
   // Table header
   checkPage(8);
   setFont("mono");
   doc.setFontSize(6);
   color(C.ink3);
-  const colW = CW / 4;
-  doc.text("COMPETITOR", ML, y);
-  doc.text("WHAT USERS VALUE", ML + colW, y);
-  doc.text("WHAT USERS HATE", ML + colW * 2, y);
-  doc.text("YOUR OPENING", ML + colW * 3, y);
+  doc.text("COMPETITOR", compCol.name, y);
+  doc.text("WHAT USERS VALUE", compCol.pros, y);
+  doc.text("WHAT USERS HATE", compCol.cons, y);
+  doc.text("YOUR OPENING", compCol.opp, y);
   y += 2;
   drawRule(ML, ML + CW, y, true);
   y += 4;
@@ -282,31 +321,31 @@ export function exportReportPdf(report: ReportData) {
     const prosText = c.pros.join(". ");
     const consText = c.cons.join(". ");
 
-    const nameLines = splitText(c.name, colW - 4);
-    const prosLines = splitText(prosText, colW - 4);
-    const consLines = splitText(consText, colW - 4);
-    const oppLines = splitText(c.opportunity, colW - 4);
+    const nameLines = splitText(c.name, compW.name);
+    const prosLines = splitText(prosText, compW.pros);
+    const consLines = splitText(consText, compW.cons);
+    const oppLines = splitText(c.opportunity, compW.opp);
     const maxLines = Math.max(nameLines.length, prosLines.length, consLines.length, oppLines.length);
-    checkPage(maxLines * 3.8 + 5);
+    checkPage(maxLines * LH.pt8_5 + 5);
 
     setFont("body", "bold");
     doc.setFontSize(9);
     color(C.ink);
-    doc.text(nameLines, ML, y);
+    doc.text(nameLines, compCol.name, y);
 
     setFont("body");
     doc.setFontSize(8.5);
     color(C.ink2);
-    doc.text(prosLines, ML + colW, y);
+    doc.text(prosLines, compCol.pros, y);
 
     color(C.red);
-    doc.text(consLines, ML + colW * 2, y);
+    doc.text(consLines, compCol.cons, y);
 
     setFont("body", "italic");
     color(C.green);
-    doc.text(oppLines, ML + colW * 3, y);
+    doc.text(oppLines, compCol.opp, y);
 
-    y += maxLines * 3.8 + 3;
+    y += maxLines * LH.pt8_5 + 3;
     if (i < report.competitor_weaknesses.competitors.length - 1) {
       drawRule(ML, ML + CW, y - 1);
     }
@@ -328,7 +367,7 @@ export function exportReportPdf(report: ReportData) {
 
     for (const p of report.audience_language.phrases) {
       const phraseLines = splitText(`"${p.phrase}"`, CW - 30);
-      checkPage(phraseLines.length * 4 + 4);
+      checkPage(phraseLines.length * LH.pt9_5 + 4);
 
       setFont("display", "italic");
       doc.setFontSize(9.5);
@@ -340,7 +379,7 @@ export function exportReportPdf(report: ReportData) {
       color(C.ink4);
       doc.text(p.source, ML + CW, y, { align: "right" });
 
-      y += phraseLines.length * 4 + 2.5;
+      y += phraseLines.length * LH.pt9_5 + 2.5;
       drawRule(ML, ML + CW, y - 1);
     }
     y += 5;
@@ -354,7 +393,7 @@ export function exportReportPdf(report: ReportData) {
     for (let i = 0; i < report.build_recommendations.recommendations.length; i++) {
       const r = report.build_recommendations.recommendations[i];
       const bodyLines = splitText(r.body, CW - 12);
-      checkPage(bodyLines.length * 3.8 + 14);
+      checkPage(bodyLines.length * LH.pt8_5 + 14);
 
       // Big number
       setFont("display", "bold");
@@ -374,7 +413,7 @@ export function exportReportPdf(report: ReportData) {
       doc.setFontSize(8.5);
       color(C.ink3);
       doc.text(bodyLines, ML + 12, y);
-      y += bodyLines.length * 3.8 + 2;
+      y += bodyLines.length * LH.pt8_5 + 2;
 
       // Priority tag
       setFont("mono");
