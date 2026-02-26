@@ -67,7 +67,7 @@ QUERY INTENT:
 STEP 2 — SELECT SOURCES (3-5 ONLY)
 ═══════════════════════════════════════════════
 
-Select exactly 3-5 sources from the list below. NEVER more than 5.
+Select exactly 3 sources from the list below. NEVER more than 3.
 Fewer sources = faster, more reliable results.
 
 MASTER SOURCE LIST — USE WHEN / SKIP WHEN only:
