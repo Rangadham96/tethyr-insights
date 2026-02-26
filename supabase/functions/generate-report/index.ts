@@ -1454,15 +1454,93 @@ serve(async (req: Request) => {
                   }));
                 }
               } else {
-                filteredDataByPlatform.push({ platform: activePlatform, data: filtered });
-                dataCount++;
-                send(sseEvent("source_update", {
-                  platform: task.platform,
-                  status: "done",
-                  items_found: itemsFound,
-                  message: `${activePlatform}: ${itemsFound} quality items (signal: ${filtered.signal || "unknown"})`,
-                }));
-                send(logEvent(`${activePlatform}: ${itemsFound} items passed quality filter (${filtered.signal || "?"})`, "found"));
+                // ═══ THIN-RESULT RETRY: if < 5 items, retry with broader query ═══
+                if (itemsFound < 5 && !scrapingAbort.signal.aborted && !(task as any)._retried) {
+                  (task as any)._retried = true;
+                  send(logEvent(`${activePlatform}: only ${itemsFound} items — retrying with broader query...`, "info"));
+
+                  // Extract 2 broadest keywords from query
+                  const words = query.split(/\s+/).filter(w => w.length > 2).sort((a, b) => b.length - a.length);
+                  const broadKeywords = words.slice(0, 2).join(" ");
+
+                  // Build a broader URL for the same platform
+                  const baseUrl = PLATFORM_BASE_URLS[activePlatform] || "https://www.google.com";
+                  const broaderUrl = activePlatform === "reddit" || activePlatform.includes("reddit")
+                    ? `https://old.reddit.com/search/?q=${encodeURIComponent(broadKeywords)}&sort=relevance&t=year`
+                    : `${baseUrl}/search?q=${encodeURIComponent(broadKeywords)}`;
+
+                  const retryTask: TinyFishTask = {
+                    ...task,
+                    platform: activePlatform,
+                    url_or_query: broaderUrl,
+                    goal: task.goal, // reuse same extraction goal
+                  };
+
+                  const retryResult = await runTinyFishTask(retryTask, TINYFISH_API_KEY, getTimeout(activePlatform), send, scrapingAbort.signal);
+
+                  if (retryResult.success && retryResult.data) {
+                    // Merge and deduplicate by title
+                    const existingItems = filtered.items || [];
+                    let newItems: any[] = [];
+                    const retryData = retryResult.data as any;
+                    if (Array.isArray(retryData)) newItems = retryData;
+                    else if (retryData?.items && Array.isArray(retryData.items)) newItems = retryData.items;
+
+                    const existingTitles = new Set(existingItems.map((i: any) => 
+                      (i.post_title || i.title || i.question_title || "").toLowerCase().trim()
+                    ));
+                    const deduped = newItems.filter((i: any) => {
+                      const t = (i.post_title || i.title || i.question_title || "").toLowerCase().trim();
+                      return t && !existingTitles.has(t);
+                    });
+
+                    const mergedItems = [...existingItems, ...deduped];
+                    send(logEvent(`${activePlatform}: retry added ${deduped.length} new items (total: ${mergedItems.length})`, "found"));
+
+                    // Re-run quality filter on merged set
+                    try {
+                      const mergedStr = JSON.stringify(mergedItems);
+                      const refilterPrompt = buildQualityFilterPrompt(activePlatform, mergedItems.length, query);
+                      const refiltered = await callGeminiJSON(refilterPrompt, "google/gemini-2.5-flash", mergedStr) as any;
+                      const refilteredCount = refiltered.items?.length || 0;
+
+                      filteredDataByPlatform.push({ platform: activePlatform, data: refiltered });
+                      dataCount++;
+                      send(sseEvent("source_update", {
+                        platform: task.platform,
+                        status: "done",
+                        items_found: refilteredCount,
+                        message: `${activePlatform}: ${refilteredCount} quality items after retry (signal: ${refiltered.signal || "unknown"})`,
+                      }));
+                      send(logEvent(`${activePlatform}: ${refilteredCount} items after retry + re-filter`, "found"));
+                    } catch {
+                      // Re-filter failed, use merged raw
+                      filteredDataByPlatform.push({ platform: activePlatform, data: { signal: "MODERATE", items: mergedItems } });
+                      dataCount++;
+                    }
+                  } else {
+                    // Retry failed, use original filtered data
+                    filteredDataByPlatform.push({ platform: activePlatform, data: filtered });
+                    dataCount++;
+                    send(sseEvent("source_update", {
+                      platform: task.platform,
+                      status: "done",
+                      items_found: itemsFound,
+                      message: `${activePlatform}: ${itemsFound} quality items (retry failed)`,
+                    }));
+                  }
+                } else {
+                  // Normal path: enough items or already retried
+                  filteredDataByPlatform.push({ platform: activePlatform, data: filtered });
+                  dataCount++;
+                  send(sseEvent("source_update", {
+                    platform: task.platform,
+                    status: "done",
+                    items_found: itemsFound,
+                    message: `${activePlatform}: ${itemsFound} quality items (signal: ${filtered.signal || "unknown"})`,
+                  }));
+                  send(logEvent(`${activePlatform}: ${itemsFound} items passed quality filter (${filtered.signal || "?"})`, "found"));
+                }
               }
             } catch (filterErr) {
               console.error(`Quality filter failed for ${activePlatform}:`, filterErr);
