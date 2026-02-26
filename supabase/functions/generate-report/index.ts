@@ -117,6 +117,15 @@ indie_review_sites — USE WHEN: DEVELOPER_TOOLS, B2B_SAAS.
 STEP 3 — GENERATE SEARCH TASKS (3-5 TASKS ONLY)
 ═══════════════════════════════════════════════
 
+MULTI-TASK STRATEGY FOR REDDIT (MANDATORY):
+When selecting Reddit as a source, you MUST generate TWO separate Reddit tasks 
+with different query angles to maximize coverage:
+  1. Pain/frustration angle — focus on complaints, problems, frustrations 
+     (e.g., "invoicing frustration freelance", "CRM problems small team")
+  2. Competitor/alternative angle — focus on comparisons, alternatives, switching
+     (e.g., "invoice tool alternative vs", "best CRM alternative")
+Each Reddit task counts toward the 5-task cap. Both use old.reddit.com/search URLs.
+
 CRITICAL — WRITING EFFECTIVE GOALS FOR TINYFISH:
 
 TinyFish is a browser-automation agent. It works best when given a SINGLE PAGE and told to EXTRACT WHAT IS VISIBLE.
