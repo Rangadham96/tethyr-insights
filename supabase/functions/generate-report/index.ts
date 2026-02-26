@@ -1204,10 +1204,10 @@ serve(async (req: Request) => {
           send(logEvent(`Dropped ${rawTasks.length - tasks.length} blocked platform(s) from task list`, "info"));
         }
 
-        // Cap at 5 tasks max (Change 3)
-        const cappedTasks = tasks.slice(0, 5);
-        if (tasks.length > 5) {
-          send(logEvent(`Capped sources from ${tasks.length} to 5 for reliability`, "info"));
+        // Cap at 3 tasks max
+        const cappedTasks = tasks.slice(0, 3);
+        if (tasks.length > 3) {
+          send(logEvent(`Capped sources from ${tasks.length} to 3 for reliability`, "info"));
         }
 
         const sourcesSelected = cappedTasks.map((t: any) => ({
