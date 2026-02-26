@@ -817,19 +817,10 @@ function isBlockingError(result: TinyFishResult): boolean {
 }
 
 
-const TINYFISH_TIMEOUT_MS = 90_000;
+const TINYFISH_TIMEOUT_MS = 120_000;
 
-const PLATFORM_TIMEOUTS: Record<string, number> = {
-  reddit: 90_000,
-  hackernews: 75_000,
-  producthunt: 75_000,
-  indiehackers: 90_000,
-  quora: 75_000,
-  alternativeto: 75_000,
-};
-
-function getTimeout(platform: string): number {
-  return PLATFORM_TIMEOUTS[platform] || TINYFISH_TIMEOUT_MS;
+function getTimeout(_platform: string): number {
+  return TINYFISH_TIMEOUT_MS;
 }
 
 // ═══════════════════════════════════════════════
