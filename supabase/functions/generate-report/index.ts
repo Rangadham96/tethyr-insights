@@ -814,15 +814,15 @@ function isBlockingError(result: TinyFishResult): boolean {
 }
 
 
-const TINYFISH_TIMEOUT_MS = 180_000;
+const TINYFISH_TIMEOUT_MS = 90_000;
 
 const PLATFORM_TIMEOUTS: Record<string, number> = {
-  reddit: 180_000,
-  hackernews: 120_000,
-  producthunt: 120_000,   // Google site-search is fast
-  indiehackers: 150_000,
-  quora: 120_000,
-  alternativeto: 120_000, // deprioritized, short leash
+  reddit: 90_000,
+  hackernews: 75_000,
+  producthunt: 75_000,
+  indiehackers: 90_000,
+  quora: 75_000,
+  alternativeto: 75_000,
 };
 
 function getTimeout(platform: string): number {
