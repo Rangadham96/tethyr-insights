@@ -873,7 +873,7 @@ async function runWithConcurrency<T>(
   return results;
 }
 
-const MAX_CONCURRENT_AGENTS = 3;
+const MAX_CONCURRENT_AGENTS = 5;
 
 // Change 4: Inject extract spec into goal text before sending to TinyFish
 function buildEnrichedGoal(task: TinyFishTask): string {
