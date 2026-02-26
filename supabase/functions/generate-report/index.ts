@@ -114,17 +114,11 @@ substack_comments — USE WHEN: FINANCE, HEALTH_WELLNESS, CREATOR_TOOLS.
 indie_review_sites — USE WHEN: DEVELOPER_TOOLS, B2B_SAAS.
 
 ═══════════════════════════════════════════════
-STEP 3 — GENERATE SEARCH TASKS (3-5 TASKS ONLY)
+STEP 3 — GENERATE SEARCH TASKS (EXACTLY 3 TASKS)
 ═══════════════════════════════════════════════
 
-MULTI-TASK STRATEGY FOR REDDIT (MANDATORY):
-When selecting Reddit as a source, you MUST generate TWO separate Reddit tasks 
-with different query angles to maximize coverage:
-  1. Pain/frustration angle — focus on complaints, problems, frustrations 
-     (e.g., "invoicing frustration freelance", "CRM problems small team")
-  2. Competitor/alternative angle — focus on comparisons, alternatives, switching
-     (e.g., "invoice tool alternative vs", "best CRM alternative")
-Each Reddit task counts toward the 5-task cap. Both use old.reddit.com/search URLs.
+Generate exactly 3 tasks. One Reddit task + 2 other sources.
+Do NOT generate more than 3 tasks — our concurrency limit is 2 agents.
 
 CRITICAL — WRITING EFFECTIVE GOALS FOR TINYFISH:
 
