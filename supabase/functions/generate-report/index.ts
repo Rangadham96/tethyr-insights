@@ -1241,274 +1241,223 @@ serve(async (req: Request) => {
         send(logEvent(`Dispatching ${cappedTasks.length} TinyFish agents (max ${MAX_CONCURRENT_AGENTS} concurrent)...`, "info"));
         send(sseEvent("phase_update", { phase: "scraping", detail: `0 of ${cappedTasks.length} sources complete` }));
 
-        // ═══ STAGE 2: TINYFISH SCRAPING + QUALITY FILTERING (TIME-BUDGETED) ═══
+        // ═══ STAGE 2: TINYFISH SCRAPING + QUALITY FILTERING ═══
 
         const filteredDataByPlatform: Array<{ platform: string; data: any }> = [];
         let doneCount = 0;
         let dataCount = 0;
         const totalTasks = cappedTasks.length;
-        const SCRAPING_DEADLINE_MS = 300_000;
-        const scrapingAbort = new AbortController();
-        let earlyResolved = false;
+        let streamClosed = false;
 
-        const scrapingPromise = new Promise<void>((resolveAll) => {
-          const deadlineTimer = setTimeout(() => {
-            if (!earlyResolved) {
-              earlyResolved = true;
-              send(logEvent(`⏱ Time budget reached (5 min) — synthesizing with ${dataCount} sources`, "info"));
-              scrapingAbort.abort();
-              resolveAll();
-            }
-          }, SCRAPING_DEADLINE_MS);
+        // 300s safety deadline — only fires if something truly hangs
+        const deadlineAbort = new AbortController();
+        const deadlineTimer = setTimeout(() => {
+          send(logEvent(`⏱ Safety deadline reached (5 min) — synthesizing with ${dataCount} sources`, "info"));
+          deadlineAbort.abort();
+        }, 300_000);
 
-          const checkEarlyExit = () => {
-            if (earlyResolved) return;
-            // Change 10: Increased from 60% to 80% threshold
-            if (doneCount >= Math.ceil(totalTasks * 0.8) && dataCount >= 2) {
-              earlyResolved = true;
-              clearTimeout(deadlineTimer);
-              send(logEvent(`✓ ${dataCount} sources collected (${doneCount}/${totalTasks} done) — proceeding to synthesis`, "info"));
-              scrapingAbort.abort();
-              resolveAll();
-            }
-            if (doneCount >= totalTasks) {
-              earlyResolved = true;
-              clearTimeout(deadlineTimer);
-              resolveAll();
-            }
-          };
+        const taskFactories = cappedTasks.map((task) => async () => {
+          send(sseEvent("source_update", {
+            platform: task.platform,
+            status: "searching",
+            items_found: 0,
+            message: `${task.platform}: starting scrape...`,
+          }));
 
-          const taskFactories = cappedTasks.map((task) => async () => {
-            if (scrapingAbort.signal.aborted) {
+          const timeoutMs = getTimeout(task.platform);
+          let result = await runTinyFishTask(task, TINYFISH_API_KEY, timeoutMs, send, deadlineAbort.signal);
+
+          // Fallback logic
+          if (isBlockingError(result) && !deadlineAbort.signal.aborted) {
+            const fallback = getFallback(task.platform, task, classification);
+            if (fallback) {
+              const displayName = task.platform.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
+              send(logEvent(`${displayName} blocked — switching to ${fallback.label}.`, "info"));
               send(sseEvent("source_update", {
                 platform: task.platform,
-                status: "error",
+                status: "searching",
                 items_found: 0,
-                message: `${task.platform}: skipped (deadline reached)`,
+                message: `${displayName} blocked — falling back to ${fallback.label}`,
               }));
-              doneCount++;
-              checkEarlyExit();
-              return;
-            }
 
-            send(sseEvent("source_update", {
-              platform: task.platform,
-              status: "searching",
-              items_found: 0,
-              message: `${task.platform}: starting scrape...`,
-            }));
+              const topic = query;
+              const fallbackTask: TinyFishTask = {
+                platform: fallback.platform,
+                url_or_query: fallback.urlTemplate(topic),
+                goal: fallback.goalTemplate(topic),
+                selection_reason: `Fallback for blocked ${displayName}`,
+                extract: task.extract,
+              };
 
-            const timeoutMs = getTimeout(task.platform);
-            // Change 9: Pass global abort signal
-            let result = await runTinyFishTask(task, TINYFISH_API_KEY, timeoutMs, send, scrapingAbort.signal);
+              const fallbackTimeout = getTimeout(fallback.platform);
+              result = await runTinyFishTask(fallbackTask, TINYFISH_API_KEY, fallbackTimeout, send, deadlineAbort.signal);
 
-            // Fallback logic
-            if (isBlockingError(result) && !scrapingAbort.signal.aborted) {
-              const fallback = getFallback(task.platform, task, classification);
-              if (fallback) {
-                const displayName = task.platform.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
-                send(logEvent(`${displayName} blocked — switching to ${fallback.label}.`, "info"));
-                send(sseEvent("source_update", {
-                  platform: task.platform,
-                  status: "searching",
-                  items_found: 0,
-                  message: `${displayName} blocked — falling back to ${fallback.label}`,
-                }));
-
-                const topic = query; // Use the original user query, not field names
-                const fallbackTask: TinyFishTask = {
-                  platform: fallback.platform,
-                  url_or_query: fallback.urlTemplate(topic),
-                  goal: fallback.goalTemplate(topic),
-                  selection_reason: `Fallback for blocked ${displayName}`,
-                  extract: task.extract,
-                };
-
-                const fallbackTimeout = getTimeout(fallback.platform);
-                result = await runTinyFishTask(fallbackTask, TINYFISH_API_KEY, fallbackTimeout, send, scrapingAbort.signal);
-
-                if (result.success) {
-                  result.platform = fallback.platform;
-                  send(logEvent(`${fallback.label}: fallback succeeded`, "found"));
-                } else {
-                  send(logEvent(`${fallback.label}: fallback also failed — ${result.error || "unknown"}`, "error"));
-                }
+              if (result.success) {
+                result.platform = fallback.platform;
+                send(logEvent(`${fallback.label}: fallback succeeded`, "found"));
+              } else {
+                send(logEvent(`${fallback.label}: fallback also failed — ${result.error || "unknown"}`, "error"));
               }
             }
+          }
 
-            if (!result.success) {
-              const error = result.error || "Failed";
-              send(sseEvent("source_update", {
-                platform: task.platform,
-                status: "error",
-                items_found: 0,
-                message: `${task.platform}: ${error}`,
-              }));
-              send(logEvent(`${task.platform}: failed — ${error}`, "error"));
-              doneCount++;
-              send(sseEvent("phase_update", { phase: "scraping", detail: `${doneCount} of ${totalTasks} sources complete` }));
-              checkEarlyExit();
-              return;
-            }
+          if (!result.success) {
+            const error = result.error || "Failed";
+            send(sseEvent("source_update", {
+              platform: task.platform,
+              status: "error",
+              items_found: 0,
+              message: `${task.platform}: ${error}`,
+            }));
+            send(logEvent(`${task.platform}: failed — ${error}`, "error"));
+            doneCount++;
+            send(sseEvent("phase_update", { phase: "scraping", detail: `${doneCount} of ${totalTasks} sources complete` }));
+            return;
+          }
 
-            // TinyFish succeeded — run quality filter
-            const rawData = result.data;
-            const activePlatform = result.platform;
-            send(logEvent(`${activePlatform}: data received, filtering for quality...`, "found"));
+          // TinyFish succeeded — run quality filter
+          const rawData = result.data;
+          const activePlatform = result.platform;
+          send(logEvent(`${activePlatform}: data received, filtering for quality...`, "found"));
 
-            try {
-              const rawStr = typeof rawData === "string" ? rawData : JSON.stringify(rawData);
-              const itemCount = Array.isArray(rawData) ? rawData.length : 1;
-              const filterPrompt = buildQualityFilterPrompt(activePlatform, itemCount, query);
-              const filtered = await callGeminiJSON(filterPrompt, "google/gemini-2.5-flash", rawStr) as any;
+          try {
+            const rawStr = typeof rawData === "string" ? rawData : JSON.stringify(rawData);
+            const itemCount = Array.isArray(rawData) ? rawData.length : 1;
+            const filterPrompt = buildQualityFilterPrompt(activePlatform, itemCount, query);
+            const filtered = await callGeminiJSON(filterPrompt, "google/gemini-2.5-flash", rawStr) as any;
 
-              const itemsFound = filtered.items?.length || 0;
+            const itemsFound = filtered.items?.length || 0;
 
-              // Safety net: if filter returned NONE but raw data has content, use raw data
-              if (itemsFound === 0 && rawData) {
-                // Fix: check for actual content items, not just object keys
-                // {items: [], error: "login_wall"} has keys but no real data
-                const hasRawContent = Array.isArray(rawData) 
-                  ? rawData.length > 0
-                  : (typeof rawData === "object" && rawData !== null 
-                     && Array.isArray((rawData as any).items) 
-                     && (rawData as any).items.length > 0);
-                if (hasRawContent) {
-                  send(logEvent(`${activePlatform}: quality filter returned 0 items but raw data exists — using raw data`, "info"));
-                  filteredDataByPlatform.push({ platform: activePlatform, data: { signal: "WEAK", items: Array.isArray(rawData) ? rawData : [rawData] } });
-                  dataCount++;
-                  send(sseEvent("source_update", {
-                    platform: task.platform,
-                    status: "done",
-                    items_found: Array.isArray(rawData) ? rawData.length : 1,
-                    message: `${activePlatform}: ${Array.isArray(rawData) ? rawData.length : 1} items (raw, filter too strict)`,
-                  }));
-                } else {
-                  filteredDataByPlatform.push({ platform: activePlatform, data: filtered });
-                  dataCount++;
-                  send(sseEvent("source_update", {
-                    platform: task.platform,
-                    status: "done",
-                    items_found: 0,
-                    message: `${activePlatform}: no relevant items found`,
-                  }));
-                }
+            if (itemsFound === 0 && rawData) {
+              const hasRawContent = Array.isArray(rawData) 
+                ? rawData.length > 0
+                : (typeof rawData === "object" && rawData !== null 
+                   && Array.isArray((rawData as any).items) 
+                   && (rawData as any).items.length > 0);
+              if (hasRawContent) {
+                send(logEvent(`${activePlatform}: quality filter returned 0 items but raw data exists — using raw data`, "info"));
+                filteredDataByPlatform.push({ platform: activePlatform, data: { signal: "WEAK", items: Array.isArray(rawData) ? rawData : [rawData] } });
+                dataCount++;
+                send(sseEvent("source_update", {
+                  platform: task.platform,
+                  status: "done",
+                  items_found: Array.isArray(rawData) ? rawData.length : 1,
+                  message: `${activePlatform}: ${Array.isArray(rawData) ? rawData.length : 1} items (raw, filter too strict)`,
+                }));
               } else {
-                // ═══ THIN-RESULT RETRY: if < 5 items, retry with broader query ═══
-                if (itemsFound < 5 && !scrapingAbort.signal.aborted && !(task as any)._retried) {
-                  (task as any)._retried = true;
-                  send(logEvent(`${activePlatform}: only ${itemsFound} items — retrying with broader query...`, "info"));
+                // Fix: do NOT increment dataCount for 0-item results
+                send(sseEvent("source_update", {
+                  platform: task.platform,
+                  status: "done",
+                  items_found: 0,
+                  message: `${activePlatform}: no relevant items found`,
+                }));
+              }
+            } else {
+              // ═══ THIN-RESULT RETRY: if < 5 items, retry with broader query ═══
+              if (itemsFound < 5 && !deadlineAbort.signal.aborted && !(task as any)._retried) {
+                (task as any)._retried = true;
+                send(logEvent(`${activePlatform}: only ${itemsFound} items — retrying with broader query...`, "info"));
 
-                  // Extract 2 broadest keywords from query
-                  const words = query.split(/\s+/).filter(w => w.length > 2).sort((a, b) => b.length - a.length);
-                  const broadKeywords = words.slice(0, 2).join(" ");
+                const words = query.split(/\s+/).filter(w => w.length > 2).sort((a, b) => b.length - a.length);
+                const broadKeywords = words.slice(0, 2).join(" ");
 
-                  // Build a broader URL for the same platform
-                  const baseUrl = PLATFORM_BASE_URLS[activePlatform] || "https://www.google.com";
-                  const broaderUrl = activePlatform === "reddit" || activePlatform.includes("reddit")
-                    ? `https://old.reddit.com/search/?q=${encodeURIComponent(broadKeywords)}&sort=relevance&t=year`
-                    : `${baseUrl}/search?q=${encodeURIComponent(broadKeywords)}`;
+                const baseUrl = PLATFORM_BASE_URLS[activePlatform] || "https://www.google.com";
+                const broaderUrl = activePlatform === "reddit" || activePlatform.includes("reddit")
+                  ? `https://old.reddit.com/search/?q=${encodeURIComponent(broadKeywords)}&sort=relevance&t=year`
+                  : `${baseUrl}/search?q=${encodeURIComponent(broadKeywords)}`;
 
-                  const retryTask: TinyFishTask = {
-                    ...task,
-                    platform: activePlatform,
-                    url_or_query: broaderUrl,
-                    goal: task.goal, // reuse same extraction goal
-                  };
+                const retryTask: TinyFishTask = {
+                  ...task,
+                  platform: activePlatform,
+                  url_or_query: broaderUrl,
+                  goal: task.goal,
+                };
 
-                  const retryResult = await runTinyFishTask(retryTask, TINYFISH_API_KEY, getTimeout(activePlatform), send, scrapingAbort.signal);
+                const retryResult = await runTinyFishTask(retryTask, TINYFISH_API_KEY, getTimeout(activePlatform), send, deadlineAbort.signal);
 
-                  if (retryResult.success && retryResult.data) {
-                    // Merge and deduplicate by title
-                    const existingItems = filtered.items || [];
-                    let newItems: any[] = [];
-                    const retryData = retryResult.data as any;
-                    if (Array.isArray(retryData)) newItems = retryData;
-                    else if (retryData?.items && Array.isArray(retryData.items)) newItems = retryData.items;
+                if (retryResult.success && retryResult.data) {
+                  const existingItems = filtered.items || [];
+                  let newItems: any[] = [];
+                  const retryData = retryResult.data as any;
+                  if (Array.isArray(retryData)) newItems = retryData;
+                  else if (retryData?.items && Array.isArray(retryData.items)) newItems = retryData.items;
 
-                    const existingTitles = new Set(existingItems.map((i: any) => 
-                      (i.post_title || i.title || i.question_title || "").toLowerCase().trim()
-                    ));
-                    const deduped = newItems.filter((i: any) => {
-                      const t = (i.post_title || i.title || i.question_title || "").toLowerCase().trim();
-                      return t && !existingTitles.has(t);
-                    });
+                  const existingTitles = new Set(existingItems.map((i: any) => 
+                    (i.post_title || i.title || i.question_title || "").toLowerCase().trim()
+                  ));
+                  const deduped = newItems.filter((i: any) => {
+                    const t = (i.post_title || i.title || i.question_title || "").toLowerCase().trim();
+                    return t && !existingTitles.has(t);
+                  });
 
-                    const mergedItems = [...existingItems, ...deduped];
-                    send(logEvent(`${activePlatform}: retry added ${deduped.length} new items (total: ${mergedItems.length})`, "found"));
+                  const mergedItems = [...existingItems, ...deduped];
+                  send(logEvent(`${activePlatform}: retry added ${deduped.length} new items (total: ${mergedItems.length})`, "found"));
 
-                    // Re-run quality filter on merged set
-                    try {
-                      const mergedStr = JSON.stringify(mergedItems);
-                      const refilterPrompt = buildQualityFilterPrompt(activePlatform, mergedItems.length, query);
-                      const refiltered = await callGeminiJSON(refilterPrompt, "google/gemini-2.5-flash", mergedStr) as any;
-                      const refilteredCount = refiltered.items?.length || 0;
+                  try {
+                    const mergedStr = JSON.stringify(mergedItems);
+                    const refilterPrompt = buildQualityFilterPrompt(activePlatform, mergedItems.length, query);
+                    const refiltered = await callGeminiJSON(refilterPrompt, "google/gemini-2.5-flash", mergedStr) as any;
+                    const refilteredCount = refiltered.items?.length || 0;
 
-                      filteredDataByPlatform.push({ platform: activePlatform, data: refiltered });
-                      dataCount++;
-                      send(sseEvent("source_update", {
-                        platform: task.platform,
-                        status: "done",
-                        items_found: refilteredCount,
-                        message: `${activePlatform}: ${refilteredCount} quality items after retry (signal: ${refiltered.signal || "unknown"})`,
-                      }));
-                      send(logEvent(`${activePlatform}: ${refilteredCount} items after retry + re-filter`, "found"));
-                    } catch {
-                      // Re-filter failed, use merged raw
-                      filteredDataByPlatform.push({ platform: activePlatform, data: { signal: "MODERATE", items: mergedItems } });
-                      dataCount++;
-                    }
-                  } else {
-                    // Retry failed, use original filtered data
-                    filteredDataByPlatform.push({ platform: activePlatform, data: filtered });
-                    dataCount++;
+                    filteredDataByPlatform.push({ platform: activePlatform, data: refiltered });
+                    if (refilteredCount > 0) dataCount++;
                     send(sseEvent("source_update", {
                       platform: task.platform,
                       status: "done",
-                      items_found: itemsFound,
-                      message: `${activePlatform}: ${itemsFound} quality items (retry failed)`,
+                      items_found: refilteredCount,
+                      message: `${activePlatform}: ${refilteredCount} quality items after retry (signal: ${refiltered.signal || "unknown"})`,
                     }));
+                    send(logEvent(`${activePlatform}: ${refilteredCount} items after retry + re-filter`, "found"));
+                  } catch {
+                    filteredDataByPlatform.push({ platform: activePlatform, data: { signal: "MODERATE", items: mergedItems } });
+                    dataCount++;
                   }
                 } else {
-                  // Normal path: enough items or already retried
                   filteredDataByPlatform.push({ platform: activePlatform, data: filtered });
-                  dataCount++;
+                  if (itemsFound > 0) dataCount++;
                   send(sseEvent("source_update", {
                     platform: task.platform,
                     status: "done",
                     items_found: itemsFound,
-                    message: `${activePlatform}: ${itemsFound} quality items (signal: ${filtered.signal || "unknown"})`,
+                    message: `${activePlatform}: ${itemsFound} quality items (retry failed)`,
                   }));
-                  send(logEvent(`${activePlatform}: ${itemsFound} items passed quality filter (${filtered.signal || "?"})`, "found"));
                 }
+              } else {
+                filteredDataByPlatform.push({ platform: activePlatform, data: filtered });
+                if (itemsFound > 0) dataCount++;
+                send(sseEvent("source_update", {
+                  platform: task.platform,
+                  status: "done",
+                  items_found: itemsFound,
+                  message: `${activePlatform}: ${itemsFound} quality items (signal: ${filtered.signal || "unknown"})`,
+                }));
+                send(logEvent(`${activePlatform}: ${itemsFound} items passed quality filter (${filtered.signal || "?"})`, "found"));
               }
-            } catch (filterErr) {
-              console.error(`Quality filter failed for ${activePlatform}:`, filterErr);
-              filteredDataByPlatform.push({ platform: activePlatform, data: { signal: "UNFILTERED", items: Array.isArray(rawData) ? rawData : [rawData] } });
-              dataCount++;
-              send(sseEvent("source_update", {
-                platform: task.platform,
-                status: "done",
-                items_found: Array.isArray(rawData) ? rawData.length : 1,
-                message: `${activePlatform}: quality filter failed, using raw data`,
-              }));
             }
+          } catch (filterErr) {
+            console.error(`Quality filter failed for ${activePlatform}:`, filterErr);
+            filteredDataByPlatform.push({ platform: activePlatform, data: { signal: "UNFILTERED", items: Array.isArray(rawData) ? rawData : [rawData] } });
+            dataCount++;
+            send(sseEvent("source_update", {
+              platform: task.platform,
+              status: "done",
+              items_found: Array.isArray(rawData) ? rawData.length : 1,
+              message: `${activePlatform}: quality filter failed, using raw data`,
+            }));
+          }
 
-            doneCount++;
-            send(sseEvent("phase_update", { phase: "scraping", detail: `${doneCount} of ${totalTasks} sources complete` }));
-            checkEarlyExit();
-          });
-
-          runWithConcurrency(taskFactories, MAX_CONCURRENT_AGENTS).catch((err) => {
-            console.error("Concurrency runner error:", err);
-          });
+          doneCount++;
+          send(sseEvent("phase_update", { phase: "scraping", detail: `${doneCount} of ${totalTasks} sources complete` }));
         });
 
-        await scrapingPromise;
+        // Simply wait for all tasks to complete — no early-exit abort
+        await runWithConcurrency(taskFactories, MAX_CONCURRENT_AGENTS);
+        clearTimeout(deadlineTimer);
 
         if (filteredDataByPlatform.length === 0) {
           send(sseEvent("error", { message: "All sources failed. No data collected." }));
-          controller.close();
+          if (!streamClosed) { streamClosed = true; controller.close(); }
           return;
         }
 
@@ -1569,7 +1518,7 @@ serve(async (req: Request) => {
         send(sseEvent("error", { message: msg }));
       } finally {
         clearInterval(heartbeatInterval);
-        controller.close();
+        if (!streamClosed) { streamClosed = true; controller.close(); }
       }
     },
   });
