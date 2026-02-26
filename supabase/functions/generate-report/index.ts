@@ -898,7 +898,7 @@ function buildEnrichedGoal(task: TinyFishTask): string {
   return goal;
 }
 
-// Change 9: Accept global abort signal to cancel in-flight tasks
+// Sync API version — replaces SSE stream parsing with simple fetch + JSON
 async function runTinyFishTask(
   task: TinyFishTask,
   apiKey: string,
@@ -914,18 +914,17 @@ async function runTinyFishTask(
   globalAbortSignal?.addEventListener("abort", onGlobalAbort, { once: true });
 
   try {
-    // If URL goes through Google (site-search), use lite profile + no proxy
-    // Google blocks stealth browsers and proxies aggressively
     const isGoogleRoute = task.url_or_query.includes("google.com/search");
     const browserProfile = isGoogleRoute ? "lite" : (STEALTH_PLATFORMS.has(task.platform) ? "stealth" : "lite");
     const proxyConfig = (!isGoogleRoute && PROXY_PLATFORMS.has(task.platform))
       ? { proxy_config: { enabled: true, country_code: "US" } }
       : {};
 
-    // Change 4: Inject extract spec into goal
     const enrichedGoal = buildEnrichedGoal(task);
 
-    const response = await fetch("https://agent.tinyfish.ai/v1/automation/run-sse", {
+    send(logEvent(`${task.platform}: agent started (${browserProfile})...`, "searching"));
+
+    const response = await fetch("https://agent.tinyfish.ai/v1/automation/run", {
       method: "POST",
       headers: {
         "X-API-Key": apiKey,
@@ -946,67 +945,22 @@ async function runTinyFishTask(
       return { platform: task.platform, success: false, data: null, error: `HTTP ${response.status}` };
     }
 
-    const reader = response.body?.getReader();
-    if (!reader) {
-      return { platform: task.platform, success: false, data: null, error: "No response body" };
-    }
+    const result = await response.json();
 
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let resultData: unknown = null;
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-
-      for (const line of lines) {
-        if (!line.startsWith("data: ")) continue;
-        const jsonStr = line.slice(6).trim();
-        if (!jsonStr || jsonStr === "[DONE]") continue;
-
-        try {
-          const event = JSON.parse(jsonStr);
-
-          if (event.type === "PROGRESS" && event.purpose) {
-            const purpose = (event.purpose || "").toLowerCase();
-            // CAPTCHA early-exit: only abort on CONFIRMED captcha encounters, not checking steps
-            // TinyFish often says "Verify if the page is blocked by a CAPTCHA" as a routine check — that's NOT a captcha hit
-            const isCaptchaHit = (
-              (purpose.includes("captcha") && !purpose.includes("verify if") && !purpose.includes("check if") && !purpose.includes("check for")) ||
-              purpose.includes("solve captcha") ||
-              purpose.includes("captcha appeared") ||
-              purpose.includes("captcha is blocking") ||
-              purpose.includes("blocked by captcha") ||
-              purpose.includes("verify you are human") ||
-              purpose.includes("i'm not a robot")
-            );
-            if (isCaptchaHit) {
-              console.info(`[TASK RESULT] ${task.platform} | CAPTCHA | ${event.purpose}`);
-              send(logEvent(`${task.platform}: CAPTCHA confirmed — aborting early`, "error"));
-              controller.abort();
-              return { platform: task.platform, success: false, data: null, error: "CAPTCHA detected" };
-            }
-            send(logEvent(`${task.platform}: ${event.purpose}`, "searching"));
-          } else if (event.type === "COMPLETE" && event.status === "COMPLETED") {
-            resultData = event.resultJson || event.result || null;
-          } else if (event.type === "COMPLETE" && event.status !== "COMPLETED") {
-            console.info(`[TASK RESULT] ${task.platform} | TASK_FAILED | status=${event.status} | ${JSON.stringify(event).slice(0, 300)}`);
-            return {
-              platform: task.platform,
-              success: false,
-              data: null,
-              error: `TinyFish task failed: ${event.status}`,
-            };
-          }
-        } catch {
-          // Skip malformed SSE lines
-        }
+    // Check for CAPTCHA or failure in sync response
+    if (result.status !== "COMPLETED") {
+      const errorMsg = result.error || result.status || "Task failed";
+      const errorLower = (typeof errorMsg === "string" ? errorMsg : JSON.stringify(errorMsg)).toLowerCase();
+      if (errorLower.includes("captcha") || errorLower.includes("blocked")) {
+        console.info(`[TASK RESULT] ${task.platform} | CAPTCHA | ${errorMsg}`);
+        return { platform: task.platform, success: false, data: null, error: "CAPTCHA detected" };
       }
+      console.info(`[TASK RESULT] ${task.platform} | TASK_FAILED | status=${result.status} | ${JSON.stringify(result).slice(0, 300)}`);
+      return { platform: task.platform, success: false, data: null, error: `TinyFish task failed: ${result.status}` };
     }
+
+    // Extract the result data
+    const resultData = result.resultJson || result.result || null;
 
     if (resultData) {
       let itemCount = 1;
@@ -1024,8 +978,9 @@ async function runTinyFishTask(
       console.info(`[TASK DATA SHAPE] ${task.platform} | ${JSON.stringify(resultData).substring(0, 500)}`);
       return { platform: task.platform, success: true, data: resultData };
     }
-    console.info(`[TASK RESULT] ${task.platform} | FAIL | No result data in TinyFish response (stream ended without COMPLETE event)`);
-    return { platform: task.platform, success: false, data: null, error: "No result data in TinyFish response" };
+
+    console.info(`[TASK RESULT] ${task.platform} | FAIL | No result data in sync response`);
+    return { platform: task.platform, success: false, data: null, error: "No result data in sync response" };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unknown error";
     if (msg.includes("abort")) {
