@@ -1211,6 +1211,40 @@ serve(async (req: Request) => {
       }, 15_000);
 
       try {
+        // ═══ CACHE CHECK: Return recent report if available ═══
+        if (userId && teamId) {
+          try {
+            const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+            const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+            const adminClient = createClient(supabaseUrl, serviceRoleKey);
+
+            const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+            const { data: cachedReport } = await adminClient
+              .from("reports")
+              .select("report_data")
+              .eq("team_id", teamId)
+              .eq("query", query)
+              .eq("status", "complete")
+              .gte("created_at", twentyFourHoursAgo)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .single();
+
+            if (cachedReport?.report_data) {
+              send(logEvent("Found cached report from last 24h — returning instantly", "info"));
+              send(sseEvent("phase_update", { phase: "classifying", detail: "Using cached results" }));
+              send(sseEvent("report_complete", cachedReport.report_data));
+              send(logEvent("Report complete (cached).", "info"));
+              clearInterval(heartbeatInterval);
+              controller.close();
+              return;
+            }
+          } catch (cacheErr) {
+            // No cached report found or error — proceed with fresh scraping
+            console.log("Cache check:", cacheErr);
+          }
+        }
+
         // ═══ STAGE 1: CLASSIFICATION ═══
         send(sseEvent("phase_update", { phase: "classifying", detail: "Analyzing query..." }));
         send(logEvent("Classifying query and selecting optimal sources...", "searching"));
