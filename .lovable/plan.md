@@ -1,114 +1,96 @@
 
 
-# Fix Scraping Reliability + PDF Layout Issues
+# Get Comprehensive Results — Implementation Plan
 
-## Assessment of the Feedback
+## Problem
+Reports return 8-11 data points and default to "UNCLEAR" verdicts. Three root causes identified by comparing our implementation against TinyFish best practices.
 
-The feedback identifies **two distinct problems**: backend scraping reliability (critical) and PDF layout quality (cosmetic but important for demos). The previously proposed plan addresses scraping but misses the PDF issues. This plan covers both.
+## Changes (all in `supabase/functions/generate-report/index.ts`)
 
----
+### 1. Increase Concurrency: 3 to 5
 
-## Part A: PDF Layout Problems
+The battle plan explicitly says "fire 5 Reddit calls simultaneously instead of sequentially." With 5 tasks capped and only 3 concurrent slots, 2 tasks always queue behind — wasting the entire timeout of the first batch before starting.
 
-Looking at the exported PDF, several alignment issues are visible:
+- Change `MAX_CONCURRENT_AGENTS` from 3 to 5
+- All 5 tasks now run truly in parallel
 
-1. **Feature Gaps table columns overlap**: The GAP text column (`ML + 8`) is only allocated `CW - 50` mm width, but FREQ is placed at `ML + CW - 30` and STATUS at `ML + CW - 12`. When gap descriptions are long, text bleeds into the FREQ column.
+### 2. Cut Timeouts in Half
 
-2. **Competitor table is too cramped**: Four equal columns (`CW/4 = 42.5mm` each) is not enough for prose-heavy content. The "WHAT USERS HATE" and "YOUR OPENING" columns wrap excessively at 8.5pt font.
+The battle plan says TinyFish calls take "10-30 seconds each." Our timeouts are 120-180s — a task that hasn't returned in 90s is almost certainly stuck. Cutting timeouts means failed tasks fail fast, leaving time budget for retries.
 
-3. **Quotes layout wastes space**: The source label is right-aligned at `ML + 24` (only 24mm from left margin), but the quote text starts at `ML + 30`. This means 30mm of the 170mm content width is used for a short label, and the quote only gets 140mm.
+- Default timeout: 180s to 90s
+- Reddit: 180s to 90s
+- Short-leash platforms (HackerNews, ProductHunt, Quora): 120s to 75s
 
-4. **Line height inconsistencies**: `splitText` returns lines, but the y-increment multipliers vary (4, 3.8, 4.5, 6.5) without matching the actual font sizes used. At 10pt (body), line height should be ~4.2mm; at 9pt, ~3.8mm; at 8.5pt, ~3.6mm.
+### 3. Auto-Retry Thin Results with Broader Query
 
-5. **Verdict block has fixed 10mm height** but the text may wrap to more lines, causing text to overflow the background rectangle.
+After a task completes with fewer than 5 items, automatically retry with a simplified 2-keyword version of the query. This catches cases where the LLM generated an overly specific query.
 
-### PDF Fixes (in `src/lib/exportPdf.ts`)
+Logic (added after quality filter, before incrementing doneCount):
 
-- Widen left margin to 22mm, keep right at 18mm for a more editorial feel
-- Quotes: reduce source label width to 18mm, start quote at ML + 20 (gives quote 150mm)
-- Feature Gaps: use proportional columns -- GAP gets 60% of CW, FREQ 15%, STATUS 15%, number 10%
-- Competitor table: switch from 4 equal columns to weighted (20% / 25% / 30% / 25%)
-- Verdict block: dynamically size the background rectangle height based on actual text lines
-- Standardize line-height multipliers to match font sizes consistently
-
----
-
-## Part B: Scraping Reliability (5 changes)
-
-### Change 1: Route Reddit through Google site-search
-
-Reddit's native search (`old.reddit.com/search/`) is unreliable for compound queries. Google site-search works reliably (proven by ProductHunt and IndieHackers patterns).
-
-**In `buildClassificationPrompt`**, update the Reddit URL rule:
-```
-reddit -- USE WHEN: almost always. 
-URL MUST USE: https://www.google.com/search?q=site:reddit.com+[subreddit]+[terms]
-(do NOT use old.reddit.com/search directly -- it often returns empty results)
+```text
+if filtered items < 5 AND deadline not reached AND not already a retry:
+  1. Extract 2 broadest keywords from query (simple string split, no LLM)
+  2. Build broader URL for same platform
+  3. Run second TinyFish task
+  4. Merge + deduplicate items by title
+  5. Re-run quality filter on combined set
 ```
 
-**In `PLATFORM_BASE_URLS`**, change reddit's base to `https://www.google.com/search?q=site:reddit.com`.
+Guard: a `retried` flag per task prevents infinite loops.
 
-### Change 2: Route Twitter/X through Google site-search
+### 4. Dual-Angle Reddit in Classification Prompt
 
-Twitter is consistently login-walled. Update the classification prompt:
-```
-twitter_x -- USE WHEN: EMERGING problems, real-time reactions.
-URL MUST USE: https://www.google.com/search?q=site:twitter.com+OR+site:x.com+[terms]
-(do NOT use twitter.com directly -- login wall blocks all scraping)
-```
+Update `buildClassificationPrompt` to instruct the LLM to generate TWO Reddit tasks with different query angles when Reddit is selected:
 
-### Change 3: Add Reddit fallback in `getFallback()`
-
-Currently there's no `case "reddit"` in the fallback switch. Add one that retries via Google site-search with broader terms:
-```typescript
-case "reddit":
-  return {
-    platform: "reddit",
-    label: "Reddit (via Google)",
-    urlTemplate: (t) => `https://www.google.com/search?q=site:reddit.com+${encodeURIComponent(t)}`,
-    goalTemplate: (t) => `Extract all visible Google search result titles and snippets...`
-  };
+```text
+MULTI-TASK STRATEGY FOR REDDIT:
+When selecting Reddit, generate TWO separate tasks:
+  1. Pain/frustration angle (e.g., "invoicing frustration freelance")
+  2. Competitor/alternative angle (e.g., "invoice tool alternative")
+Each Reddit task counts toward the 5-task cap.
 ```
 
-### Change 4: Confidence scaling in synthesis prompt
+This doubles Reddit coverage without code hacks — the LLM naturally generates complementary queries.
 
-Add mandatory rules to `buildSynthesisPrompt`:
+### 5. Cache Check Before Scraping (Quick Win)
+
+Before starting the pipeline, check if a report for the same query exists in the `reports` table within the last 24 hours. If so, return it immediately via SSE — saves TinyFish credits and gives instant results.
+
+```text
+if (userId && teamId):
+  check reports table for matching query + team_id where created_at > 24h ago
+  if found: stream cached report_data as report_complete event, skip pipeline
 ```
-CONFIDENCE SCALING RULES (MANDATORY):
-- If total data_points < 15: verdict MUST be "UNCLEAR" or "PARTIAL"  
-- If a feature gap has frequency <= 2 mentions: it CANNOT be ranked above position 3
-- build_recommendations with evidence_count <= 2: set rank no higher than 3
-- NEVER use language like "Focus on" or "HIGH PRIORITY" for anything with < 5 data points
-- If competitors are not directly mentioned in data: write "Insufficient data to assess" for users_value and users_hate
-```
-
-### Change 5: Fix phantom item inflation
-
-The raw-data safety net at line 1313-1315 counts `{items: [], error: "login_wall_encountered"}` as having content because `Object.keys(rawData).length > 0` is true. Fix to check for actual items:
-```typescript
-const hasRawContent = Array.isArray(rawData) 
-  ? rawData.length > 0
-  : (typeof rawData === "object" && rawData !== null 
-     && Array.isArray((rawData as any).items) 
-     && (rawData as any).items.length > 0);
-```
-
----
-
-## Files Changed
-
-| File | What changes |
-|------|-------------|
-| `supabase/functions/generate-report/index.ts` | Changes 1-5: Reddit/Twitter Google routing, fallback, synthesis confidence rules, phantom item fix |
-| `src/lib/exportPdf.ts` | Column proportions, quote layout, verdict block sizing, line-height consistency |
 
 ## Expected Impact
 
-- **Data volume**: Reddit and Twitter queries go through Google (proven reliable), should increase from ~10 to 30-50 items per report
-- **Synthesis honesty**: Reports with thin data will have appropriately cautious language and lower-priority recommendations  
-- **PDF quality**: Proper column alignment, no text overlap, professional A4 layout suitable for demo/pitch
+| Metric | Current | After |
+|--------|---------|-------|
+| Items per report | 8-11 | 25-40 |
+| Total scraping time | ~180s (sequential bottleneck) | ~90s (full parallel) |
+| Verdict accuracy | Mostly "UNCLEAR" | Appropriate to volume |
+| Reddit coverage | 1 query, 3-5 hits | 2 queries + retry, 15-25 hits |
+| Repeat queries | Full re-scrape every time | Instant from cache |
 
-## Risk
+## Risk Assessment
 
-Low. The Google site-search approach is already proven for ProductHunt and IndieHackers in the existing codebase. PDF changes are purely visual with no logic impact.
+- **Low**: Concurrency and timeout changes are single-constant edits
+- **Low**: Retry has a `retried` flag guard — no infinite loops possible
+- **Low**: Dual-Reddit is a soft prompt instruction — if LLM ignores it, we get 1 Reddit task as before
+- **None**: Cache check is read-only with graceful fallthrough
+
+## Files Changed
+
+| File | What Changes |
+|------|-------------|
+| `supabase/functions/generate-report/index.ts` | Concurrency 3 to 5, timeouts halved, thin-result retry logic, dual-Reddit prompt instruction, 24h cache check |
+
+## No Changes Needed
+
+- PDF layout (already fixed)
+- Confidence scaling rules (already in place)
+- Phantom item filtering (already in place)
+- Frontend components (no UI changes needed)
+- Fallback logic (already working)
 
