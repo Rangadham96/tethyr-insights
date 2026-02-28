@@ -795,7 +795,7 @@ If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
       return {
         platform: "reddit",
         label: "Reddit professional discussions",
-        urlTemplate: (t) => `https://old.reddit.com/search/?q=${encodeURIComponent(t + ' business')}&sort=relevance&t=year`,
+        urlTemplate: (t) => `https://www.google.com/search?q=site:reddit.com+${encodeURIComponent(t + ' business')}`,
         goalTemplate: (t) =>
           `Extract all visible post titles and preview text on this page.
 
