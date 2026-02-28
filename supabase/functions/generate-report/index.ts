@@ -170,12 +170,10 @@ GOOD GOAL EXAMPLE:
   url: "https://www.google.com/search?q=site:reddit.com+CRM+frustrations"
   goal: "Extract all visible Google search result titles and snippets on this page.
   
-  For each item, extract ONLY:
-  - post_title (string, e.g. 'Why I ditched HubSpot')
-  - preview_text (string, first 200 chars, e.g. 'After 6 months of...')
-  - upvotes (number, e.g. 42)
-  - comment_count (number, e.g. 15)
-  - subreddit (string, e.g. 'r/SaaS')
+   For each item, extract ONLY:
+   - result_title (string, e.g. 'Why I ditched HubSpot : r/SaaS')
+   - snippet (string, e.g. 'After 6 months of frustration with HubSpot...')
+   - url (string, e.g. 'https://www.reddit.com/r/SaaS/comments/...')
 
   STOP CONDITIONS:
   - Stop after 15 items or all visible, whichever is fewer
