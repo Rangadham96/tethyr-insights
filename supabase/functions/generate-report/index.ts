@@ -128,7 +128,7 @@ ABSOLUTE RULES FOR EVERY GOAL:
 
 1. The url_or_query MUST be a fully-formed URL that lands DIRECTLY on the data page.
    URL EXAMPLES (search params pre-embedded):
-   - Reddit: https://old.reddit.com/r/SaaS/search/?q=CRM+frustrations&sort=top&t=year
+   - Reddit: https://www.google.com/search?q=site:reddit.com+CRM+frustrations
    - G2: https://www.g2.com/products/asana/reviews?segment=small-business
    - HN: https://hn.algolia.com/?q=CRM&type=story&sort=byPopularity
    - Capterra: https://www.capterra.com/p/12345/ProductName/reviews/
