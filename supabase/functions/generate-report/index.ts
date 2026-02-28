@@ -185,8 +185,8 @@ GOOD GOAL EXAMPLE:
   - If cookie banner appears, close it first
   - If login wall appears, return empty array
 
-  Return JSON: {'items': [{'post_title': '...', 'preview_text': '...', 'upvotes': 0, 'comment_count': 0, 'subreddit': '...'}]}
-  If no data found, return: {'items': [], 'error': 'no_data_visible'}"
+   Return JSON: {'items': [{'result_title': '...', 'snippet': '...', 'url': '...'}]}
+   If no data found, return: {'items': [], 'error': 'no_data_visible'}"
 
 BAD GOALS (will timeout — DO NOT USE):
   "Extract top 3 comments from the first 5 posts" ← navigates into multiple posts
