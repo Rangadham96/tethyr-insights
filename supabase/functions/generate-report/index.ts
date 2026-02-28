@@ -73,7 +73,7 @@ Fewer sources = faster, more reliable results.
 MASTER SOURCE LIST — USE WHEN / SKIP WHEN only:
 
 ── DISCUSSION & COMMUNITY ──
-reddit — USE WHEN: almost always. SKIP WHEN: never. URL MUST USE: https://old.reddit.com/search/?q=[simple+terms]&sort=relevance&t=year — CRITICAL: keep the query SIMPLE (2-4 words, no quotes, no boolean operators, no subreddit filters). Example: https://old.reddit.com/search/?q=freelance+invoicing+frustration&sort=relevance&t=year. Reddit search works best with simple keyword queries.
+reddit — USE WHEN: almost always. SKIP WHEN: never. URL MUST USE: https://www.google.com/search?q=site:reddit.com+[simple+terms] — Route through Google for reliability. CRITICAL: keep the query SIMPLE (2-4 words). Example: https://www.google.com/search?q=site:reddit.com+freelance+invoicing+frustration. Do NOT use old.reddit.com or reddit.com directly.
 hackernews — USE WHEN: DEVELOPER_TOOLS, B2B_SAAS, FOUNDERS_PMS. SKIP WHEN: HEALTH_WELLNESS, CONSUMERS_GENERAL.
 indiehackers — USE WHEN: FOUNDERS_PMS, B2B_SAAS, VALIDATE/GAPS. SKIP WHEN: HEALTH_WELLNESS, CONSUMERS_GENERAL.
 producthunt — USE WHEN: B2C_APP, B2B_SAAS, DEVELOPER_TOOLS. SKIP WHEN: PHYSICAL_PRODUCT, SERVICE_BUSINESS. URL MUST USE: https://www.google.com/search?q=site:producthunt.com+[query] (do NOT use producthunt.com directly).
@@ -128,7 +128,7 @@ ABSOLUTE RULES FOR EVERY GOAL:
 
 1. The url_or_query MUST be a fully-formed URL that lands DIRECTLY on the data page.
    URL EXAMPLES (search params pre-embedded):
-   - Reddit: https://old.reddit.com/r/SaaS/search/?q=CRM+frustrations&sort=top&t=year
+   - Reddit: https://www.google.com/search?q=site:reddit.com+CRM+frustrations
    - G2: https://www.g2.com/products/asana/reviews?segment=small-business
    - HN: https://hn.algolia.com/?q=CRM&type=story&sort=byPopularity
    - Capterra: https://www.capterra.com/p/12345/ProductName/reviews/
@@ -167,15 +167,13 @@ ABSOLUTE RULES FOR EVERY GOAL:
 5. NEVER say "first 5 posts", "top 10 comments" — use "all visible" and let max_items handle limits.
 
 GOOD GOAL EXAMPLE:
-  url: "https://old.reddit.com/r/SaaS/search/?q=CRM+frustrations&sort=top&t=year"
-  goal: "Extract all visible post titles and preview text on this page.
+  url: "https://www.google.com/search?q=site:reddit.com+CRM+frustrations"
+  goal: "Extract all visible Google search result titles and snippets on this page.
   
-  For each item, extract ONLY:
-  - post_title (string, e.g. 'Why I ditched HubSpot')
-  - preview_text (string, first 200 chars, e.g. 'After 6 months of...')
-  - upvotes (number, e.g. 42)
-  - comment_count (number, e.g. 15)
-  - subreddit (string, e.g. 'r/SaaS')
+   For each item, extract ONLY:
+   - result_title (string, e.g. 'Why I ditched HubSpot : r/SaaS')
+   - snippet (string, e.g. 'After 6 months of frustration with HubSpot...')
+   - url (string, e.g. 'https://www.reddit.com/r/SaaS/comments/...')
 
   STOP CONDITIONS:
   - Stop after 15 items or all visible, whichever is fewer
@@ -187,8 +185,8 @@ GOOD GOAL EXAMPLE:
   - If cookie banner appears, close it first
   - If login wall appears, return empty array
 
-  Return JSON: {'items': [{'post_title': '...', 'preview_text': '...', 'upvotes': 0, 'comment_count': 0, 'subreddit': '...'}]}
-  If no data found, return: {'items': [], 'error': 'no_data_visible'}"
+   Return JSON: {'items': [{'result_title': '...', 'snippet': '...', 'url': '...'}]}
+   If no data found, return: {'items': [], 'error': 'no_data_visible'}"
 
 BAD GOALS (will timeout — DO NOT USE):
   "Extract top 3 comments from the first 5 posts" ← navigates into multiple posts
@@ -493,7 +491,7 @@ interface TinyFishResult {
 // ═══════════════════════════════════════════════
 
 const PLATFORM_BASE_URLS: Record<string, string> = {
-  reddit: "https://old.reddit.com",
+  reddit: "https://www.google.com/search?q=site:reddit.com",
   hackernews: "https://news.ycombinator.com",
   g2: "https://www.g2.com",
   capterra: "https://www.capterra.com",
@@ -598,7 +596,7 @@ If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
       return {
         platform: "reddit",
         label: "Reddit video discussions",
-        urlTemplate: (t) => `https://old.reddit.com/search/?q=${encodeURIComponent(t + ' review video')}&sort=relevance&t=year`,
+        urlTemplate: (t) => `https://www.google.com/search?q=site:reddit.com+${encodeURIComponent(t + ' review video')}`,
         goalTemplate: (t) =>
           `Extract all visible post titles and preview text on this page.
 
@@ -681,7 +679,7 @@ If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
       return {
         platform: "reddit",
         label: "Reddit communities",
-        urlTemplate: (t) => `https://old.reddit.com/search/?q=${encodeURIComponent(t)}&sort=relevance&t=year`,
+        urlTemplate: (t) => `https://www.google.com/search?q=site:reddit.com+${encodeURIComponent(t)}`,
         goalTemplate: (t) =>
           `Extract all visible post titles and preview text on this page.
 
@@ -713,7 +711,7 @@ If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
       return {
         platform: "reddit",
         label: "Reddit B2B discussions",
-        urlTemplate: (t) => `https://old.reddit.com/search/?q=${encodeURIComponent(t + ' review OR comparison OR alternative')}&sort=relevance&t=year`,
+        urlTemplate: (t) => `https://www.google.com/search?q=site:reddit.com+${encodeURIComponent(t + ' review OR comparison OR alternative')}`,
         goalTemplate: (t) =>
           `Extract all visible post titles and preview text on this page.
 
@@ -741,7 +739,7 @@ If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
       return {
         platform: "reddit",
         label: "Reddit (broader search)",
-        urlTemplate: (t) => `https://old.reddit.com/search/?q=${encodeURIComponent(t)}&sort=relevance&t=year`,
+        urlTemplate: (t) => `https://www.google.com/search?q=site:reddit.com+${encodeURIComponent(t)}`,
         goalTemplate: (t) =>
           `Extract all visible post titles and preview text on this page.
 
@@ -797,7 +795,7 @@ If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
       return {
         platform: "reddit",
         label: "Reddit professional discussions",
-        urlTemplate: (t) => `https://old.reddit.com/search/?q=${encodeURIComponent(t + ' business')}&sort=relevance&t=year`,
+        urlTemplate: (t) => `https://www.google.com/search?q=site:reddit.com+${encodeURIComponent(t + ' business')}`,
         goalTemplate: (t) =>
           `Extract all visible post titles and preview text on this page.
 
@@ -898,13 +896,16 @@ function getTimeout(_platform: string): number {
 const STEALTH_PLATFORMS = new Set([
   "trustpilot",
   "amazon_reviews", "apple_app_store", "google_play_store",
-  "reddit", "alternativeto", "indiehackers",
+  "alternativeto",
+  // reddit removed — now routed through Google site-search (lite profile)
   // producthunt removed — now routed through Google site-search
+  // indiehackers removed — now routed through Google site-search
 ]);
 
 const PROXY_PLATFORMS = new Set([
   "trustpilot", "amazon_reviews",
-  "reddit", "alternativeto",
+  "alternativeto",
+  // reddit removed — Google doesn't need proxy
   // producthunt removed — Google doesn't need proxy
 ]);
 
@@ -1432,7 +1433,7 @@ serve(async (req: Request) => {
 
                 const baseUrl = PLATFORM_BASE_URLS[activePlatform] || "https://www.google.com";
                 const broaderUrl = activePlatform === "reddit" || activePlatform.includes("reddit")
-                  ? `https://old.reddit.com/search/?q=${encodeURIComponent(broadKeywords)}&sort=relevance&t=year`
+                  ? `https://www.google.com/search?q=site:reddit.com+${encodeURIComponent(broadKeywords)}`
                   : `${baseUrl}/search?q=${encodeURIComponent(broadKeywords)}`;
 
                 const retryTask: TinyFishTask = {
