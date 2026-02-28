@@ -73,7 +73,7 @@ Fewer sources = faster, more reliable results.
 MASTER SOURCE LIST — USE WHEN / SKIP WHEN only:
 
 ── DISCUSSION & COMMUNITY ──
-reddit — USE WHEN: almost always. SKIP WHEN: never. URL MUST USE: https://old.reddit.com/search/?q=[simple+terms]&sort=relevance&t=year — CRITICAL: keep the query SIMPLE (2-4 words, no quotes, no boolean operators, no subreddit filters). Example: https://old.reddit.com/search/?q=freelance+invoicing+frustration&sort=relevance&t=year. Reddit search works best with simple keyword queries.
+reddit — USE WHEN: almost always. SKIP WHEN: never. URL MUST USE: https://www.google.com/search?q=site:reddit.com+[simple+terms] — Route through Google for reliability. CRITICAL: keep the query SIMPLE (2-4 words). Example: https://www.google.com/search?q=site:reddit.com+freelance+invoicing+frustration. Do NOT use old.reddit.com or reddit.com directly.
 hackernews — USE WHEN: DEVELOPER_TOOLS, B2B_SAAS, FOUNDERS_PMS. SKIP WHEN: HEALTH_WELLNESS, CONSUMERS_GENERAL.
 indiehackers — USE WHEN: FOUNDERS_PMS, B2B_SAAS, VALIDATE/GAPS. SKIP WHEN: HEALTH_WELLNESS, CONSUMERS_GENERAL.
 producthunt — USE WHEN: B2C_APP, B2B_SAAS, DEVELOPER_TOOLS. SKIP WHEN: PHYSICAL_PRODUCT, SERVICE_BUSINESS. URL MUST USE: https://www.google.com/search?q=site:producthunt.com+[query] (do NOT use producthunt.com directly).
