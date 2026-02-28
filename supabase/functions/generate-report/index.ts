@@ -791,6 +791,66 @@ Return JSON: {'items': [{'title': '...', 'snippet': '...', 'url': '...'}]}
 If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
       };
 
+    case "linkedin_comments":
+    case "linkedin":
+      // LinkedIn via Google site-search rarely returns useful data
+      return {
+        platform: "reddit",
+        label: "Reddit professional discussions",
+        urlTemplate: (t) => `https://old.reddit.com/search/?q=${encodeURIComponent(t + ' business')}&sort=relevance&t=year`,
+        goalTemplate: (t) =>
+          `Extract all visible post titles and preview text on this page.
+
+For each item, extract ONLY:
+- post_title (string, e.g. 'Best tools for managing freelance clients')
+- preview_text (string, first 200 chars, e.g. 'After trying several...')
+- upvotes (number, e.g. 42)
+- comment_count (number, e.g. 15)
+- subreddit (string, e.g. 'r/freelance')
+
+STOP CONDITIONS:
+- Stop after 15 items or all visible, whichever is fewer
+- Scroll down to load content if needed, but stop after 5 scrolls maximum
+- Do NOT navigate away from this page (no clicking into posts)
+
+EDGE CASES:
+- If cookie banner appears, close it first
+- If login wall appears, return empty array
+
+Return JSON: {'items': [{'post_title': '...', 'preview_text': '...', 'upvotes': 0, 'comment_count': 0, 'subreddit': '...'}]}
+If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
+      };
+
+    case "indiehackers":
+    case "indie_hackers":
+      // IndieHackers via Google site-search unreliable — use HN Algolia instead
+      return {
+        platform: "hackernews",
+        label: "Hacker News",
+        urlTemplate: (t) => `https://hn.algolia.com/?q=${encodeURIComponent(t)}&type=story&sort=byPopularity`,
+        goalTemplate: (t) =>
+          `Extract all visible story titles and metadata on this page.
+
+For each item, extract ONLY:
+- story_title (string, e.g. 'Show HN: A better invoicing tool')
+- url (string, e.g. 'https://example.com')
+- points (number, e.g. 120)
+- comment_count (number, e.g. 45)
+- author (string, e.g. 'jsmith')
+
+STOP CONDITIONS:
+- Stop after 15 items or all visible, whichever is fewer
+- Scroll down to load content if needed, but stop after 5 scrolls maximum
+- Do NOT navigate away from this page (no clicking into stories)
+
+EDGE CASES:
+- If cookie banner appears, close it first
+- If login wall appears, return empty array
+
+Return JSON: {'items': [{'story_title': '...', 'url': '...', 'points': 0, 'comment_count': 0, 'author': '...'}]}
+If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
+      };
+
     default:
       return null;
   }
