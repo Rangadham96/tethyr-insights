@@ -896,13 +896,16 @@ function getTimeout(_platform: string): number {
 const STEALTH_PLATFORMS = new Set([
   "trustpilot",
   "amazon_reviews", "apple_app_store", "google_play_store",
-  "reddit", "alternativeto", "indiehackers",
+  "alternativeto",
+  // reddit removed — now routed through Google site-search (lite profile)
   // producthunt removed — now routed through Google site-search
+  // indiehackers removed — now routed through Google site-search
 ]);
 
 const PROXY_PLATFORMS = new Set([
   "trustpilot", "amazon_reviews",
-  "reddit", "alternativeto",
+  "alternativeto",
+  // reddit removed — Google doesn't need proxy
   // producthunt removed — Google doesn't need proxy
 ]);
 
