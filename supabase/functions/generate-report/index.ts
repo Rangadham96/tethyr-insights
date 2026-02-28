@@ -1494,6 +1494,7 @@ serve(async (req: Request) => {
 
           // Fallback logic
           if (isBlockingError(result) && !deadlineAbort.signal.aborted) {
+            // Before using TinyFish fallback, try direct API if fallback target supports it
             const fallback = getFallback(task.platform, task, classification);
             if (fallback) {
               const displayName = task.platform.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
@@ -1505,17 +1506,31 @@ serve(async (req: Request) => {
                 message: `${displayName} blocked — falling back to ${fallback.label}`,
               }));
 
-              const topic = query;
-              const fallbackTask: TinyFishTask = {
-                platform: fallback.platform,
-                url_or_query: fallback.urlTemplate(topic),
-                goal: fallback.goalTemplate(topic),
-                selection_reason: `Fallback for blocked ${displayName}`,
-                extract: task.extract,
-              };
-
-              const fallbackTimeout = getTimeout(fallback.platform);
-              result = await runTinyFishTask(fallbackTask, TINYFISH_API_KEY, fallbackTimeout, send, deadlineAbort.signal);
+              // Check if fallback platform has a direct API
+              const fallbackDirect = await tryDirectAPI(
+                { ...task, platform: fallback.platform },
+                query, send, deadlineAbort.signal,
+              );
+              
+              if (fallbackDirect) {
+                result = {
+                  platform: fallbackDirect.platform,
+                  success: fallbackDirect.success,
+                  data: fallbackDirect.data,
+                  error: fallbackDirect.error,
+                };
+              } else {
+                const topic = query;
+                const fallbackTask: TinyFishTask = {
+                  platform: fallback.platform,
+                  url_or_query: fallback.urlTemplate(topic),
+                  goal: fallback.goalTemplate(topic),
+                  selection_reason: `Fallback for blocked ${displayName}`,
+                  extract: task.extract,
+                };
+                const fallbackTimeout = getTimeout(fallback.platform);
+                result = await runTinyFishTask(fallbackTask, TINYFISH_API_KEY, fallbackTimeout, send, deadlineAbort.signal);
+              }
 
               if (result.success) {
                 result.platform = fallback.platform;
