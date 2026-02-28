@@ -491,7 +491,7 @@ interface TinyFishResult {
 // ═══════════════════════════════════════════════
 
 const PLATFORM_BASE_URLS: Record<string, string> = {
-  reddit: "https://old.reddit.com",
+  reddit: "https://www.google.com/search?q=site:reddit.com",
   hackernews: "https://news.ycombinator.com",
   g2: "https://www.g2.com",
   capterra: "https://www.capterra.com",
