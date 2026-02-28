@@ -890,6 +890,147 @@ function getTimeout(_platform: string): number {
 }
 
 // ═══════════════════════════════════════════════
+// DIRECT API FETCHERS — bypass TinyFish for reliable sources
+// ═══════════════════════════════════════════════
+
+// Set of platforms that should use direct API calls instead of TinyFish
+const DIRECT_API_PLATFORMS = new Set(["reddit", "hackernews"]);
+
+interface DirectFetchResult {
+  platform: string;
+  success: boolean;
+  data: any;
+  error?: string;
+}
+
+async function fetchRedditDirect(
+  query: string,
+  send: (chunk: string) => void,
+  abortSignal?: AbortSignal,
+): Promise<DirectFetchResult> {
+  const platform = "reddit";
+  try {
+    // Use Reddit's public JSON search API with proper bot User-Agent
+    const keywords = query.split(/\s+/).filter(w => w.length > 2).slice(0, 5).join(" ");
+    const url = `https://www.reddit.com/search.json?q=${encodeURIComponent(keywords)}&sort=relevance&t=year&limit=25`;
+    
+    send(logEvent(`reddit: fetching via direct API (${keywords})...`, "searching"));
+    
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "web:tethyr:v1.0.0 (by /u/tethyr_bot)",
+        "Accept": "application/json",
+      },
+      signal: abortSignal,
+    });
+
+    if (!response.ok) {
+      console.info(`[DIRECT API] reddit | HTTP ${response.status}`);
+      return { platform, success: false, data: null, error: `Reddit API HTTP ${response.status}` };
+    }
+
+    const json = await response.json();
+    const posts = json?.data?.children || [];
+    
+    if (posts.length === 0) {
+      console.info(`[DIRECT API] reddit | 0 posts returned`);
+      return { platform, success: false, data: null, error: "no_data_visible" };
+    }
+
+    const items = posts
+      .filter((p: any) => p.data && !p.data.over_18)
+      .slice(0, 15)
+      .map((p: any) => ({
+        post_title: p.data.title || "",
+        preview_text: (p.data.selftext || "").substring(0, 300),
+        upvotes: p.data.ups || 0,
+        comment_count: p.data.num_comments || 0,
+        subreddit: `r/${p.data.subreddit || "unknown"}`,
+        url: `https://reddit.com${p.data.permalink || ""}`,
+      }));
+
+    console.info(`[DIRECT API] reddit | SUCCESS | ${items.length} items`);
+    send(logEvent(`reddit: ${items.length} posts found via direct API`, "found"));
+    return { platform, success: true, data: { items } };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Unknown error";
+    if (msg.includes("abort")) {
+      return { platform, success: false, data: null, error: "Cancelled (deadline reached)" };
+    }
+    console.info(`[DIRECT API] reddit | ERROR | ${msg}`);
+    return { platform, success: false, data: null, error: msg };
+  }
+}
+
+async function fetchHNAlgoliaDirect(
+  query: string,
+  send: (chunk: string) => void,
+  abortSignal?: AbortSignal,
+): Promise<DirectFetchResult> {
+  const platform = "hackernews";
+  try {
+    const keywords = query.split(/\s+/).filter(w => w.length > 2).slice(0, 5).join(" ");
+    const url = `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(keywords)}&tags=story&hitsPerPage=20`;
+    
+    send(logEvent(`hackernews: fetching via Algolia API (${keywords})...`, "searching"));
+    
+    const response = await fetch(url, {
+      headers: { "Accept": "application/json" },
+      signal: abortSignal,
+    });
+
+    if (!response.ok) {
+      console.info(`[DIRECT API] hackernews | HTTP ${response.status}`);
+      return { platform, success: false, data: null, error: `HN Algolia HTTP ${response.status}` };
+    }
+
+    const json = await response.json();
+    const hits = json?.hits || [];
+    
+    if (hits.length === 0) {
+      console.info(`[DIRECT API] hackernews | 0 hits returned`);
+      return { platform, success: false, data: null, error: "no_data_visible" };
+    }
+
+    const items = hits.slice(0, 15).map((h: any) => ({
+      story_title: h.title || "",
+      url: h.url || `https://news.ycombinator.com/item?id=${h.objectID}`,
+      points: h.points || 0,
+      comment_count: h.num_comments || 0,
+      author: h.author || "",
+    }));
+
+    console.info(`[DIRECT API] hackernews | SUCCESS | ${items.length} items`);
+    send(logEvent(`hackernews: ${items.length} stories found via Algolia API`, "found"));
+    return { platform, success: true, data: { items } };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Unknown error";
+    if (msg.includes("abort")) {
+      return { platform, success: false, data: null, error: "Cancelled (deadline reached)" };
+    }
+    console.info(`[DIRECT API] hackernews | ERROR | ${msg}`);
+    return { platform, success: false, data: null, error: msg };
+  }
+}
+
+// Route a task through direct API if the platform supports it
+async function tryDirectAPI(
+  task: TinyFishTask,
+  query: string,
+  send: (chunk: string) => void,
+  abortSignal?: AbortSignal,
+): Promise<DirectFetchResult | null> {
+  const effectivePlatform = task.platform.toLowerCase();
+  if (effectivePlatform === "reddit" || effectivePlatform.includes("reddit")) {
+    return fetchRedditDirect(query, send, abortSignal);
+  }
+  if (effectivePlatform === "hackernews" || effectivePlatform === "hacker_news") {
+    return fetchHNAlgoliaDirect(query, send, abortSignal);
+  }
+  return null; // Not a direct API platform — use TinyFish
+}
+
+// ═══════════════════════════════════════════════
 // PLATFORM CONFIGURATION SETS
 // ═══════════════════════════════════════════════
 
@@ -1333,11 +1474,27 @@ serve(async (req: Request) => {
             message: `${task.platform}: starting scrape...`,
           }));
 
-          const timeoutMs = getTimeout(task.platform);
-          let result = await runTinyFishTask(task, TINYFISH_API_KEY, timeoutMs, send, deadlineAbort.signal);
+          // Try direct API first for supported platforms (Reddit, HN)
+          const directResult = await tryDirectAPI(task, query, send, deadlineAbort.signal);
+          let result: TinyFishResult;
+          
+          if (directResult) {
+            // Convert DirectFetchResult to TinyFishResult format
+            result = {
+              platform: directResult.platform,
+              success: directResult.success,
+              data: directResult.data,
+              error: directResult.error,
+            };
+          } else {
+            // Fall back to TinyFish for non-API platforms
+            const timeoutMs = getTimeout(task.platform);
+            result = await runTinyFishTask(task, TINYFISH_API_KEY, timeoutMs, send, deadlineAbort.signal);
+          }
 
           // Fallback logic
           if (isBlockingError(result) && !deadlineAbort.signal.aborted) {
+            // Before using TinyFish fallback, try direct API if fallback target supports it
             const fallback = getFallback(task.platform, task, classification);
             if (fallback) {
               const displayName = task.platform.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
@@ -1349,17 +1506,31 @@ serve(async (req: Request) => {
                 message: `${displayName} blocked — falling back to ${fallback.label}`,
               }));
 
-              const topic = query;
-              const fallbackTask: TinyFishTask = {
-                platform: fallback.platform,
-                url_or_query: fallback.urlTemplate(topic),
-                goal: fallback.goalTemplate(topic),
-                selection_reason: `Fallback for blocked ${displayName}`,
-                extract: task.extract,
-              };
-
-              const fallbackTimeout = getTimeout(fallback.platform);
-              result = await runTinyFishTask(fallbackTask, TINYFISH_API_KEY, fallbackTimeout, send, deadlineAbort.signal);
+              // Check if fallback platform has a direct API
+              const fallbackDirect = await tryDirectAPI(
+                { ...task, platform: fallback.platform },
+                query, send, deadlineAbort.signal,
+              );
+              
+              if (fallbackDirect) {
+                result = {
+                  platform: fallbackDirect.platform,
+                  success: fallbackDirect.success,
+                  data: fallbackDirect.data,
+                  error: fallbackDirect.error,
+                };
+              } else {
+                const topic = query;
+                const fallbackTask: TinyFishTask = {
+                  platform: fallback.platform,
+                  url_or_query: fallback.urlTemplate(topic),
+                  goal: fallback.goalTemplate(topic),
+                  selection_reason: `Fallback for blocked ${displayName}`,
+                  extract: task.extract,
+                };
+                const fallbackTimeout = getTimeout(fallback.platform);
+                result = await runTinyFishTask(fallbackTask, TINYFISH_API_KEY, fallbackTimeout, send, deadlineAbort.signal);
+              }
 
               if (result.success) {
                 result.platform = fallback.platform;
