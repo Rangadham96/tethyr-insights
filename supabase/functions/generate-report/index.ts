@@ -73,7 +73,7 @@ Fewer sources = faster, more reliable results.
 MASTER SOURCE LIST — USE WHEN / SKIP WHEN only:
 
 ── DISCUSSION & COMMUNITY ──
-reddit — USE WHEN: almost always. SKIP WHEN: never. URL MUST USE: https://www.google.com/search?q=site:reddit.com+[simple+terms] — Route through Google for reliability. CRITICAL: keep the query SIMPLE (2-4 words). Example: https://www.google.com/search?q=site:reddit.com+freelance+invoicing+frustration. Do NOT use old.reddit.com or reddit.com directly.
+reddit — USE WHEN: almost always. SKIP WHEN: never. URL MUST USE: https://old.reddit.com/search/?q=[simple+terms]&sort=relevance&t=year — CRITICAL: keep the query SIMPLE (2-4 words, no quotes, no boolean operators, no subreddit filters). Example: https://old.reddit.com/search/?q=freelance+invoicing+frustration&sort=relevance&t=year. Reddit search works best with simple keyword queries.
 hackernews — USE WHEN: DEVELOPER_TOOLS, B2B_SAAS, FOUNDERS_PMS. SKIP WHEN: HEALTH_WELLNESS, CONSUMERS_GENERAL.
 indiehackers — USE WHEN: FOUNDERS_PMS, B2B_SAAS, VALIDATE/GAPS. SKIP WHEN: HEALTH_WELLNESS, CONSUMERS_GENERAL.
 producthunt — USE WHEN: B2C_APP, B2B_SAAS, DEVELOPER_TOOLS. SKIP WHEN: PHYSICAL_PRODUCT, SERVICE_BUSINESS. URL MUST USE: https://www.google.com/search?q=site:producthunt.com+[query] (do NOT use producthunt.com directly).
@@ -128,7 +128,7 @@ ABSOLUTE RULES FOR EVERY GOAL:
 
 1. The url_or_query MUST be a fully-formed URL that lands DIRECTLY on the data page.
    URL EXAMPLES (search params pre-embedded):
-   - Reddit: https://www.google.com/search?q=site:reddit.com+CRM+frustrations
+   - Reddit: https://old.reddit.com/r/SaaS/search/?q=CRM+frustrations&sort=top&t=year
    - G2: https://www.g2.com/products/asana/reviews?segment=small-business
    - HN: https://hn.algolia.com/?q=CRM&type=story&sort=byPopularity
    - Capterra: https://www.capterra.com/p/12345/ProductName/reviews/
@@ -167,13 +167,15 @@ ABSOLUTE RULES FOR EVERY GOAL:
 5. NEVER say "first 5 posts", "top 10 comments" — use "all visible" and let max_items handle limits.
 
 GOOD GOAL EXAMPLE:
-  url: "https://www.google.com/search?q=site:reddit.com+CRM+frustrations"
-  goal: "Extract all visible Google search result titles and snippets on this page.
+  url: "https://old.reddit.com/r/SaaS/search/?q=CRM+frustrations&sort=top&t=year"
+  goal: "Extract all visible post titles and preview text on this page.
   
-   For each item, extract ONLY:
-   - result_title (string, e.g. 'Why I ditched HubSpot : r/SaaS')
-   - snippet (string, e.g. 'After 6 months of frustration with HubSpot...')
-   - url (string, e.g. 'https://www.reddit.com/r/SaaS/comments/...')
+  For each item, extract ONLY:
+  - post_title (string, e.g. 'Why I ditched HubSpot')
+  - preview_text (string, first 200 chars, e.g. 'After 6 months of...')
+  - upvotes (number, e.g. 42)
+  - comment_count (number, e.g. 15)
+  - subreddit (string, e.g. 'r/SaaS')
 
   STOP CONDITIONS:
   - Stop after 15 items or all visible, whichever is fewer
@@ -185,8 +187,8 @@ GOOD GOAL EXAMPLE:
   - If cookie banner appears, close it first
   - If login wall appears, return empty array
 
-   Return JSON: {'items': [{'result_title': '...', 'snippet': '...', 'url': '...'}]}
-   If no data found, return: {'items': [], 'error': 'no_data_visible'}"
+  Return JSON: {'items': [{'post_title': '...', 'preview_text': '...', 'upvotes': 0, 'comment_count': 0, 'subreddit': '...'}]}
+  If no data found, return: {'items': [], 'error': 'no_data_visible'}"
 
 BAD GOALS (will timeout — DO NOT USE):
   "Extract top 3 comments from the first 5 posts" ← navigates into multiple posts
@@ -491,7 +493,7 @@ interface TinyFishResult {
 // ═══════════════════════════════════════════════
 
 const PLATFORM_BASE_URLS: Record<string, string> = {
-  reddit: "https://www.google.com/search?q=site:reddit.com",
+  reddit: "https://old.reddit.com",
   hackernews: "https://news.ycombinator.com",
   g2: "https://www.g2.com",
   capterra: "https://www.capterra.com",
@@ -596,7 +598,7 @@ If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
       return {
         platform: "reddit",
         label: "Reddit video discussions",
-        urlTemplate: (t) => `https://www.google.com/search?q=site:reddit.com+${encodeURIComponent(t + ' review video')}`,
+        urlTemplate: (t) => `https://old.reddit.com/search/?q=${encodeURIComponent(t + ' review video')}&sort=relevance&t=year`,
         goalTemplate: (t) =>
           `Extract all visible post titles and preview text on this page.
 
@@ -679,7 +681,7 @@ If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
       return {
         platform: "reddit",
         label: "Reddit communities",
-        urlTemplate: (t) => `https://www.google.com/search?q=site:reddit.com+${encodeURIComponent(t)}`,
+        urlTemplate: (t) => `https://old.reddit.com/search/?q=${encodeURIComponent(t)}&sort=relevance&t=year`,
         goalTemplate: (t) =>
           `Extract all visible post titles and preview text on this page.
 
@@ -711,7 +713,7 @@ If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
       return {
         platform: "reddit",
         label: "Reddit B2B discussions",
-        urlTemplate: (t) => `https://www.google.com/search?q=site:reddit.com+${encodeURIComponent(t + ' review OR comparison OR alternative')}`,
+        urlTemplate: (t) => `https://old.reddit.com/search/?q=${encodeURIComponent(t + ' review OR comparison OR alternative')}&sort=relevance&t=year`,
         goalTemplate: (t) =>
           `Extract all visible post titles and preview text on this page.
 
@@ -739,7 +741,7 @@ If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
       return {
         platform: "reddit",
         label: "Reddit (broader search)",
-        urlTemplate: (t) => `https://www.google.com/search?q=site:reddit.com+${encodeURIComponent(t)}`,
+        urlTemplate: (t) => `https://old.reddit.com/search/?q=${encodeURIComponent(t)}&sort=relevance&t=year`,
         goalTemplate: (t) =>
           `Extract all visible post titles and preview text on this page.
 
@@ -795,7 +797,7 @@ If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
       return {
         platform: "reddit",
         label: "Reddit professional discussions",
-        urlTemplate: (t) => `https://www.google.com/search?q=site:reddit.com+${encodeURIComponent(t + ' business')}`,
+        urlTemplate: (t) => `https://old.reddit.com/search/?q=${encodeURIComponent(t + ' business')}&sort=relevance&t=year`,
         goalTemplate: (t) =>
           `Extract all visible post titles and preview text on this page.
 
@@ -890,163 +892,19 @@ function getTimeout(_platform: string): number {
 }
 
 // ═══════════════════════════════════════════════
-// DIRECT API FETCHERS — bypass TinyFish for reliable sources
-// ═══════════════════════════════════════════════
-
-// Set of platforms that should use direct API calls instead of TinyFish
-const DIRECT_API_PLATFORMS = new Set(["reddit", "hackernews"]);
-
-interface DirectFetchResult {
-  platform: string;
-  success: boolean;
-  data: any;
-  error?: string;
-}
-
-async function fetchRedditDirect(
-  query: string,
-  send: (chunk: string) => void,
-  abortSignal?: AbortSignal,
-): Promise<DirectFetchResult> {
-  const platform = "reddit";
-  try {
-    // Use Reddit's public JSON search API with proper bot User-Agent
-    const keywords = query.split(/\s+/).filter(w => w.length > 2).slice(0, 5).join(" ");
-    const url = `https://www.reddit.com/search.json?q=${encodeURIComponent(keywords)}&sort=relevance&t=year&limit=25`;
-    
-    send(logEvent(`reddit: fetching via direct API (${keywords})...`, "searching"));
-    
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent": "web:tethyr:v1.0.0 (by /u/tethyr_bot)",
-        "Accept": "application/json",
-      },
-      signal: abortSignal,
-    });
-
-    if (!response.ok) {
-      console.info(`[DIRECT API] reddit | HTTP ${response.status}`);
-      return { platform, success: false, data: null, error: `Reddit API HTTP ${response.status}` };
-    }
-
-    const json = await response.json();
-    const posts = json?.data?.children || [];
-    
-    if (posts.length === 0) {
-      console.info(`[DIRECT API] reddit | 0 posts returned`);
-      return { platform, success: false, data: null, error: "no_data_visible" };
-    }
-
-    const items = posts
-      .filter((p: any) => p.data && !p.data.over_18)
-      .slice(0, 15)
-      .map((p: any) => ({
-        post_title: p.data.title || "",
-        preview_text: (p.data.selftext || "").substring(0, 300),
-        upvotes: p.data.ups || 0,
-        comment_count: p.data.num_comments || 0,
-        subreddit: `r/${p.data.subreddit || "unknown"}`,
-        url: `https://reddit.com${p.data.permalink || ""}`,
-      }));
-
-    console.info(`[DIRECT API] reddit | SUCCESS | ${items.length} items`);
-    send(logEvent(`reddit: ${items.length} posts found via direct API`, "found"));
-    return { platform, success: true, data: { items } };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Unknown error";
-    if (msg.includes("abort")) {
-      return { platform, success: false, data: null, error: "Cancelled (deadline reached)" };
-    }
-    console.info(`[DIRECT API] reddit | ERROR | ${msg}`);
-    return { platform, success: false, data: null, error: msg };
-  }
-}
-
-async function fetchHNAlgoliaDirect(
-  query: string,
-  send: (chunk: string) => void,
-  abortSignal?: AbortSignal,
-): Promise<DirectFetchResult> {
-  const platform = "hackernews";
-  try {
-    const keywords = query.split(/\s+/).filter(w => w.length > 2).slice(0, 5).join(" ");
-    const url = `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(keywords)}&tags=story&hitsPerPage=20`;
-    
-    send(logEvent(`hackernews: fetching via Algolia API (${keywords})...`, "searching"));
-    
-    const response = await fetch(url, {
-      headers: { "Accept": "application/json" },
-      signal: abortSignal,
-    });
-
-    if (!response.ok) {
-      console.info(`[DIRECT API] hackernews | HTTP ${response.status}`);
-      return { platform, success: false, data: null, error: `HN Algolia HTTP ${response.status}` };
-    }
-
-    const json = await response.json();
-    const hits = json?.hits || [];
-    
-    if (hits.length === 0) {
-      console.info(`[DIRECT API] hackernews | 0 hits returned`);
-      return { platform, success: false, data: null, error: "no_data_visible" };
-    }
-
-    const items = hits.slice(0, 15).map((h: any) => ({
-      story_title: h.title || "",
-      url: h.url || `https://news.ycombinator.com/item?id=${h.objectID}`,
-      points: h.points || 0,
-      comment_count: h.num_comments || 0,
-      author: h.author || "",
-    }));
-
-    console.info(`[DIRECT API] hackernews | SUCCESS | ${items.length} items`);
-    send(logEvent(`hackernews: ${items.length} stories found via Algolia API`, "found"));
-    return { platform, success: true, data: { items } };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Unknown error";
-    if (msg.includes("abort")) {
-      return { platform, success: false, data: null, error: "Cancelled (deadline reached)" };
-    }
-    console.info(`[DIRECT API] hackernews | ERROR | ${msg}`);
-    return { platform, success: false, data: null, error: msg };
-  }
-}
-
-// Route a task through direct API if the platform supports it
-async function tryDirectAPI(
-  task: TinyFishTask,
-  query: string,
-  send: (chunk: string) => void,
-  abortSignal?: AbortSignal,
-): Promise<DirectFetchResult | null> {
-  const effectivePlatform = task.platform.toLowerCase();
-  if (effectivePlatform === "reddit" || effectivePlatform.includes("reddit")) {
-    return fetchRedditDirect(query, send, abortSignal);
-  }
-  if (effectivePlatform === "hackernews" || effectivePlatform === "hacker_news") {
-    return fetchHNAlgoliaDirect(query, send, abortSignal);
-  }
-  return null; // Not a direct API platform — use TinyFish
-}
-
-// ═══════════════════════════════════════════════
 // PLATFORM CONFIGURATION SETS
 // ═══════════════════════════════════════════════
 
 const STEALTH_PLATFORMS = new Set([
   "trustpilot",
   "amazon_reviews", "apple_app_store", "google_play_store",
-  "alternativeto",
-  // reddit removed — now routed through Google site-search (lite profile)
+  "reddit", "alternativeto", "indiehackers",
   // producthunt removed — now routed through Google site-search
-  // indiehackers removed — now routed through Google site-search
 ]);
 
 const PROXY_PLATFORMS = new Set([
   "trustpilot", "amazon_reviews",
-  "alternativeto",
-  // reddit removed — Google doesn't need proxy
+  "reddit", "alternativeto",
   // producthunt removed — Google doesn't need proxy
 ]);
 
@@ -1474,27 +1332,11 @@ serve(async (req: Request) => {
             message: `${task.platform}: starting scrape...`,
           }));
 
-          // Try direct API first for supported platforms (Reddit, HN)
-          const directResult = await tryDirectAPI(task, query, send, deadlineAbort.signal);
-          let result: TinyFishResult;
-          
-          if (directResult) {
-            // Convert DirectFetchResult to TinyFishResult format
-            result = {
-              platform: directResult.platform,
-              success: directResult.success,
-              data: directResult.data,
-              error: directResult.error,
-            };
-          } else {
-            // Fall back to TinyFish for non-API platforms
-            const timeoutMs = getTimeout(task.platform);
-            result = await runTinyFishTask(task, TINYFISH_API_KEY, timeoutMs, send, deadlineAbort.signal);
-          }
+          const timeoutMs = getTimeout(task.platform);
+          let result = await runTinyFishTask(task, TINYFISH_API_KEY, timeoutMs, send, deadlineAbort.signal);
 
           // Fallback logic
           if (isBlockingError(result) && !deadlineAbort.signal.aborted) {
-            // Before using TinyFish fallback, try direct API if fallback target supports it
             const fallback = getFallback(task.platform, task, classification);
             if (fallback) {
               const displayName = task.platform.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
@@ -1506,31 +1348,17 @@ serve(async (req: Request) => {
                 message: `${displayName} blocked — falling back to ${fallback.label}`,
               }));
 
-              // Check if fallback platform has a direct API
-              const fallbackDirect = await tryDirectAPI(
-                { ...task, platform: fallback.platform },
-                query, send, deadlineAbort.signal,
-              );
-              
-              if (fallbackDirect) {
-                result = {
-                  platform: fallbackDirect.platform,
-                  success: fallbackDirect.success,
-                  data: fallbackDirect.data,
-                  error: fallbackDirect.error,
-                };
-              } else {
-                const topic = query;
-                const fallbackTask: TinyFishTask = {
-                  platform: fallback.platform,
-                  url_or_query: fallback.urlTemplate(topic),
-                  goal: fallback.goalTemplate(topic),
-                  selection_reason: `Fallback for blocked ${displayName}`,
-                  extract: task.extract,
-                };
-                const fallbackTimeout = getTimeout(fallback.platform);
-                result = await runTinyFishTask(fallbackTask, TINYFISH_API_KEY, fallbackTimeout, send, deadlineAbort.signal);
-              }
+              const topic = query;
+              const fallbackTask: TinyFishTask = {
+                platform: fallback.platform,
+                url_or_query: fallback.urlTemplate(topic),
+                goal: fallback.goalTemplate(topic),
+                selection_reason: `Fallback for blocked ${displayName}`,
+                extract: task.extract,
+              };
+
+              const fallbackTimeout = getTimeout(fallback.platform);
+              result = await runTinyFishTask(fallbackTask, TINYFISH_API_KEY, fallbackTimeout, send, deadlineAbort.signal);
 
               if (result.success) {
                 result.platform = fallback.platform;
@@ -1604,7 +1432,7 @@ serve(async (req: Request) => {
 
                 const baseUrl = PLATFORM_BASE_URLS[activePlatform] || "https://www.google.com";
                 const broaderUrl = activePlatform === "reddit" || activePlatform.includes("reddit")
-                  ? `https://www.google.com/search?q=site:reddit.com+${encodeURIComponent(broadKeywords)}`
+                  ? `https://old.reddit.com/search/?q=${encodeURIComponent(broadKeywords)}&sort=relevance&t=year`
                   : `${baseUrl}/search?q=${encodeURIComponent(broadKeywords)}`;
 
                 const retryTask: TinyFishTask = {
