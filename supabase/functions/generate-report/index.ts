@@ -1474,8 +1474,23 @@ serve(async (req: Request) => {
             message: `${task.platform}: starting scrape...`,
           }));
 
-          const timeoutMs = getTimeout(task.platform);
-          let result = await runTinyFishTask(task, TINYFISH_API_KEY, timeoutMs, send, deadlineAbort.signal);
+          // Try direct API first for supported platforms (Reddit, HN)
+          const directResult = await tryDirectAPI(task, query, send, deadlineAbort.signal);
+          let result: TinyFishResult;
+          
+          if (directResult) {
+            // Convert DirectFetchResult to TinyFishResult format
+            result = {
+              platform: directResult.platform,
+              success: directResult.success,
+              data: directResult.data,
+              error: directResult.error,
+            };
+          } else {
+            // Fall back to TinyFish for non-API platforms
+            const timeoutMs = getTimeout(task.platform);
+            result = await runTinyFishTask(task, TINYFISH_API_KEY, timeoutMs, send, deadlineAbort.signal);
+          }
 
           // Fallback logic
           if (isBlockingError(result) && !deadlineAbort.signal.aborted) {
