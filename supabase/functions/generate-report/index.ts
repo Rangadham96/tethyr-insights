@@ -167,8 +167,8 @@ ABSOLUTE RULES FOR EVERY GOAL:
 5. NEVER say "first 5 posts", "top 10 comments" — use "all visible" and let max_items handle limits.
 
 GOOD GOAL EXAMPLE:
-  url: "https://old.reddit.com/r/SaaS/search/?q=CRM+frustrations&sort=top&t=year"
-  goal: "Extract all visible post titles and preview text on this page.
+  url: "https://www.google.com/search?q=site:reddit.com+CRM+frustrations"
+  goal: "Extract all visible Google search result titles and snippets on this page.
   
   For each item, extract ONLY:
   - post_title (string, e.g. 'Why I ditched HubSpot')
