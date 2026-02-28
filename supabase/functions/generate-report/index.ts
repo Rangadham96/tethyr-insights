@@ -802,13 +802,21 @@ function isBlockingError(result: TinyFishResult): boolean {
     if (err.includes("403") || err.includes("429") || err.includes("blocked") || err.includes("forbidden") || err.includes("rate limit") || err.includes("captcha")) {
       return true;
     }
+    // Any failure is worth retrying with fallback
+    return true;
   }
   if (result.success) {
     const data = result.data;
     if (data === null || data === undefined) return true;
     if (Array.isArray(data) && data.length === 0) return true;
     if (typeof data === "object" && !Array.isArray(data)) {
-      const values = Object.values(data as Record<string, unknown>);
+      const rd = data as Record<string, unknown>;
+      // Detect TinyFish "no_data_visible" error responses
+      if (rd.error === "no_data_visible") return true;
+      // Detect empty items arrays
+      if (Array.isArray(rd.items) && rd.items.length === 0) return true;
+      // Check if all values are empty
+      const values = Object.values(rd);
       const allEmpty = values.every(v => v === null || v === undefined || (Array.isArray(v) && v.length === 0) || v === "");
       if (allEmpty) return true;
     }
