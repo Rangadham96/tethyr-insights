@@ -711,7 +711,7 @@ If no data found, return: {'items': [], 'error': 'no_data_visible'}`,
       return {
         platform: "reddit",
         label: "Reddit B2B discussions",
-        urlTemplate: (t) => `https://old.reddit.com/search/?q=${encodeURIComponent(t + ' review OR comparison OR alternative')}&sort=relevance&t=year`,
+        urlTemplate: (t) => `https://www.google.com/search?q=site:reddit.com+${encodeURIComponent(t + ' review OR comparison OR alternative')}`,
         goalTemplate: (t) =>
           `Extract all visible post titles and preview text on this page.
 
