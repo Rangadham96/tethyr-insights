@@ -910,15 +910,15 @@ async function fetchRedditDirect(
 ): Promise<DirectFetchResult> {
   const platform = "reddit";
   try {
-    // Use Reddit's public JSON search API — no auth needed
+    // Use Reddit's public JSON search API with proper bot User-Agent
     const keywords = query.split(/\s+/).filter(w => w.length > 2).slice(0, 5).join(" ");
-    const url = `https://old.reddit.com/search.json?q=${encodeURIComponent(keywords)}&sort=relevance&t=year&limit=25`;
+    const url = `https://www.reddit.com/search.json?q=${encodeURIComponent(keywords)}&sort=relevance&t=year&limit=25`;
     
     send(logEvent(`reddit: fetching via direct API (${keywords})...`, "searching"));
     
     const response = await fetch(url, {
       headers: {
-        "User-Agent": "Tethyr/1.0 (market research tool)",
+        "User-Agent": "web:tethyr:v1.0.0 (by /u/tethyr_bot)",
         "Accept": "application/json",
       },
       signal: abortSignal,
