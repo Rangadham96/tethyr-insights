@@ -1433,7 +1433,7 @@ serve(async (req: Request) => {
 
                 const baseUrl = PLATFORM_BASE_URLS[activePlatform] || "https://www.google.com";
                 const broaderUrl = activePlatform === "reddit" || activePlatform.includes("reddit")
-                  ? `https://old.reddit.com/search/?q=${encodeURIComponent(broadKeywords)}&sort=relevance&t=year`
+                  ? `https://www.google.com/search?q=site:reddit.com+${encodeURIComponent(broadKeywords)}`
                   : `${baseUrl}/search?q=${encodeURIComponent(broadKeywords)}`;
 
                 const retryTask: TinyFishTask = {
