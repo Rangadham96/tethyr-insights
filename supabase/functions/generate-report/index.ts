@@ -1316,7 +1316,7 @@ serve(async (req: Request) => {
         let doneCount = 0;
         let dataCount = 0;
         const totalTasks = cappedTasks.length;
-        let streamClosed = false;
+        // streamClosed declared above try block
 
         // 300s safety deadline — only fires if something truly hangs
         const deadlineAbort = new AbortController();
