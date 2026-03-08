@@ -1218,6 +1218,7 @@ serve(async (req: Request) => {
         }
       }, 15_000);
 
+      let streamClosed = false;
       try {
         // ═══ CACHE CHECK: Return recent report if available ═══
         if (userId && teamId) {
