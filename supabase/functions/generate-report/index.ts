@@ -526,19 +526,65 @@ function isValidUrl(str: string): boolean {
 function transformTasks(tasks: TinyFishTask[], _classification: any): TinyFishTask[] {
   const transformed: TinyFishTask[] = [];
 
-  for (const task of tasks) {
-    // Ensure url_or_query is a valid URL — if not, use the platform's base URL
-    if (!isValidUrl(task.url_or_query)) {
-      const baseUrl = PLATFORM_BASE_URLS[task.platform] || "https://www.google.com";
-      console.warn(`Invalid URL for ${task.platform}: "${task.url_or_query}" — using ${baseUrl}`);
-      task.url_or_query = baseUrl;
-    }
+  // Platforms that should ALWAYS use Google site-search (lite/direct) instead of
+  // stealth scraping, because their native sites block or timeout via TinyFish.
+  const FORCE_GOOGLE_SITE_SEARCH = new Set(["reddit", "indiehackers"]);
 
+  for (const task of tasks) {
     // Drop blocked platforms that slip through classification
     const BLOCKED_PLATFORMS = new Set(["tiktok_comments", "facebook_groups_public", "g2", "capterra", "glassdoor"]);
     if (BLOCKED_PLATFORMS.has(task.platform)) {
       console.warn(`${task.platform} task slipped through classification (blocked), dropping it`);
       continue;
+    }
+
+    // Force unreliable platforms to use Google site-search instead of direct stealth scraping
+    if (FORCE_GOOGLE_SITE_SEARCH.has(task.platform)) {
+      const currentUrl = task.url_or_query || "";
+      // Only rewrite if it's pointing at the native site (not already a Google search)
+      if (!currentUrl.includes("google.com/search")) {
+        // Extract search terms from the URL or goal
+        let searchTerms = "";
+        try {
+          const url = new URL(currentUrl);
+          searchTerms = url.searchParams.get("q") || url.searchParams.get("query") || "";
+        } catch { /* not a valid URL */ }
+        if (!searchTerms) {
+          // Extract from goal text
+          searchTerms = (task.goal.match(/related to[:\s]*["']?([^"'\n]+)/i)?.[1] || "").trim();
+        }
+        if (!searchTerms) {
+          searchTerms = task.platform === "reddit" ? "freelance invoicing" : "invoicing tools";
+        }
+
+        const siteDomain = task.platform === "reddit" ? "reddit.com" : "indiehackers.com";
+        task.url_or_query = `https://www.google.com/search?q=site:${siteDomain}+${encodeURIComponent(searchTerms).replace(/%20/g, "+")}`;
+        
+        // Rewrite goal to extract Google search results
+        task.goal = `Extract all visible Google search result titles and snippets on this page.
+
+For each item, extract ONLY these fields:
+- result_title (string, e.g. 'What invoicing software do you use? : r/freelance')
+- snippet (string, the preview text shown under the title)
+- url (string, the link URL)
+
+STOP CONDITIONS:
+- Stop after 15 items or all visible, whichever is fewer
+- Do NOT click any links or navigate away
+- Do NOT scroll more than 3 times
+
+Return JSON: {"items": [{"result_title": "...", "snippet": "...", "url": "..."}]}
+If no results found, return: {"items": [], "error": "no_data_visible"}`;
+
+        console.log(`[TRANSFORM] Rewrote ${task.platform} to Google site-search: ${task.url_or_query}`);
+      }
+    }
+
+    // Ensure url_or_query is a valid URL
+    if (!isValidUrl(task.url_or_query)) {
+      const baseUrl = PLATFORM_BASE_URLS[task.platform] || "https://www.google.com";
+      console.warn(`Invalid URL for ${task.platform}: "${task.url_or_query}" — using ${baseUrl}`);
+      task.url_or_query = baseUrl;
     }
 
     transformed.push(task);
